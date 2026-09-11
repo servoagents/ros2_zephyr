@@ -1,0 +1,25 @@
+repositories:
+  ament/ament_cmake:
+    type: git
+    url: https://github.com/ament/ament_cmake.git
+    version: 49fb40f2d3878304901c7712c3d904848907709b
+  ament/ament_lint:
+    type: git
+    url: https://github.com/ament/ament_lint.git
+    version: 52b0662f157e9d4de2df3ecb0b4ffef4fa46600d
+  ament/ament_package:
+    type: git
+    url: https://github.com/ament/ament_package.git
+    version: 9c11780af11dd87e85c066f02c712071b684fd66
+  ament/googletest:
+    type: git
+    url: https://github.com/ament/googletest.git
+    version: 34b288d677ee4ada82fada8994a8639d04afd377
+  ros2/ament_cmake_ros:
+    type: git
+    url: https://github.com/ros2/ament_cmake_ros.git
+    version: 49369719b8f847eeebcf67d4ba8dfec61e8fff0e
+  ament/ament_index:
+    type: git
+    url: https://github.com/ament/ament_index.git
+    version: b527a0c741b6069b7177d692351c10883b8e0aff

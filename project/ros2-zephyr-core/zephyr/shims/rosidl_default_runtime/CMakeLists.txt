@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.20)
+project(rosidl_default_runtime NONE)
+find_package(ament_cmake REQUIRED)
+ament_export_dependencies(rosidl_core_runtime action_msgs service_msgs)
+ament_package()

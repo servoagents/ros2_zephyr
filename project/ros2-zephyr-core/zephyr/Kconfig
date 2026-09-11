@@ -1,0 +1,36 @@
+menuconfig ROS2_ZEPHYR
+    bool "ROS 2 with direct Cyclone DDS"
+    default n
+    help
+      Build the fixed-size rclc/rcl/rmw_cyclonedds_c runtime and link it
+      directly with Cyclone DDS. This configuration does not use an XRCE
+      Agent.
+
+if ROS2_ZEPHYR
+
+config ROS2_ZEPHYR_RMW_CYCLONEDDS_C
+    bool "Use rmw_cyclonedds_c"
+    default y
+    help
+      Phase 5 currently exposes one middleware. This separate option keeps
+      the module configuration extensible without pretending that multiple
+      backends are implemented.
+
+config ROS2_ZEPHYR_DOMAIN_ID
+    int "ROS domain ID"
+    range 0 232
+    default 95
+
+config ROS2_ZEPHYR_CYCLONEDDS_THREAD_COUNT
+    int "Maximum Cyclone DDS worker threads"
+    range 1 16
+    default 8 if ARCH_POSIX
+    default 5
+
+config ROS2_ZEPHYR_CYCLONEDDS_THREAD_STACK_SIZE
+    int "Cyclone DDS worker stack size"
+    range 2048 131072
+    default 65536 if ARCH_POSIX
+    default 6144
+
+endif

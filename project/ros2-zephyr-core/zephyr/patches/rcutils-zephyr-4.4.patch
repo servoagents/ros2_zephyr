@@ -1,0 +1,53 @@
+diff --git a/src/logging.c b/src/logging.c
+index 4ed9f68..8b48b97 100644
+--- a/src/logging.c
++++ b/src/logging.c
+@@ -1302,7 +1302,13 @@ rcutils_logging_format_message(
+ # define COLOR_NORMAL 7
+ # define COLOR_RED 4
+ # define COLOR_GREEN 2
+ # define COLOR_YELLOW 6
+ # define IS_STREAM_A_TTY(stream) (_isatty(_fileno(stream)) != 0)
++#elif defined(__ZEPHYR__)
++# define COLOR_NORMAL "\033[0m"
++# define COLOR_RED "\033[31m"
++# define COLOR_GREEN "\033[32m"
++# define COLOR_YELLOW "\033[33m"
++# define IS_STREAM_A_TTY(stream) (false)
+ #else
+ # define COLOR_NORMAL "\033[0m"
+diff --git a/src/strcasecmp.c b/src/strcasecmp.c
+index eefcd21..b95fddc 100644
+--- a/src/strcasecmp.c
++++ b/src/strcasecmp.c
+@@ -21,6 +21,9 @@ extern "C"
+ 
+ #include <errno.h>
+ #include <string.h>
++#ifndef _WIN32
++#include <strings.h>
++#endif
+ 
+ #include "rcutils/strcasecmp.h"
+ 
+diff --git a/src/time_unix.c b/src/time_unix.c
+index 1e9ba0d..5832466 100644
+--- a/src/time_unix.c
++++ b/src/time_unix.c
+@@ -25,16 +25,7 @@
+ #endif  // defined(__MACH__) && defined(__APPLE__)
+ #include <math.h>
+ 
+-#if defined(__ZEPHYR__)
+-#include <version.h>
+-#if ZEPHYR_VERSION_CODE >= ZEPHYR_VERSION(3, 1, 0)
+-#include <zephyr/posix/time.h>  //  Points to Zephyr toolchain posix time implementation
+-#else
+-#include <posix/time.h>  //  Points to Zephyr toolchain posix time implementation
+-#endif
+-#else  //  #if KERNELVERSION >= ZEPHYR_VERSION(3, 1, 0)
+ #include <time.h>
+-#endif  //  defined(__ZEPHYR__)
+ 
+ #include <errno.h>
+ #include <unistd.h>
