@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check scripts
+        run: scripts/check.sh
+      - name: Prepare pinned sources
+        env:
+          ROS2_ZEPHYR_SKIP_SDK: "1"
+        run: scripts/setup.sh
+      - name: Build and run native loopback
+        run: scripts/run.sh native

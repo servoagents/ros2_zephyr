@@ -1,0 +1,4 @@
+name: ros2_zephyr
+build:
+  cmake: .
+  kconfig: Kconfig

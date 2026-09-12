@@ -1,0 +1,325 @@
+diff --git a/src/core/ddsi/src/ddsi_udp.c b/src/core/ddsi/src/ddsi_udp.c
+index c941fb6..411c353 100644
+--- a/src/core/ddsi/src/ddsi_udp.c
++++ b/src/core/ddsi/src/ddsi_udp.c
+@@ -176,7 +176,11 @@ static dds_return_t ddsi_udp_conn_read (struct ddsi_tran_conn * conn_cmn, unsign
+     struct in6_pktinfo ip6;
+ #endif
+   };
+-  char incmsg[CMSG_SPACE (sizeof (union in_pktinfo_4_6))];
++  /* Zephyr's recvmsg implementation treats zero-length control headers as
++     unused slots while constructing the result.  POSIX does not require the
++     caller to initialise this output buffer, so make that Zephyr-specific
++     expectation explicit here. */
++  char incmsg[CMSG_SPACE (sizeof (union in_pktinfo_4_6))] = { 0 };
+ #endif // PACKET_DESTINATION_INFO
+   ddsrt_iovec_t msg_iov = {
+     .iov_base = (void *) buf,
+diff --git a/src/ddsrt/include/dds/ddsrt/sockets/posix.h b/src/ddsrt/include/dds/ddsrt/sockets/posix.h
+index 1bd504e..c698cc1 100644
+--- a/src/ddsrt/include/dds/ddsrt/sockets/posix.h
++++ b/src/ddsrt/include/dds/ddsrt/sockets/posix.h
+@@ -56,13 +56,23 @@ typedef struct ddsrt_socket_ext {
+    for the same group will be skipped */
+ #define DDSRT_MCGROUP_JOIN_ONCE 1
+ 
+-# define INADDR_LOOPBACK 0x7f000001 /* 127.0.0.1 */
+-# define IN_MULTICAST(a) ((((long int) (a)) & 0xf0000000) == 0xe0000000)
++# ifndef INADDR_LOOPBACK
++#   define INADDR_LOOPBACK 0x7f000001 /* 127.0.0.1 */
++# endif
++# ifndef IN_MULTICAST
++#   define IN_MULTICAST(a) ((((long int) (a)) & 0xf0000000) == 0xe0000000)
++# endif
+ 
+ /* Ignored socket options */
+-# define IP_MULTICAST_IF    32
+-# define IP_MULTICAST_TTL   33
+-# define IP_MULTICAST_LOOP  34
++# ifndef IP_MULTICAST_IF
++#   define IP_MULTICAST_IF    32
++# endif
++# ifndef IP_MULTICAST_TTL
++#   define IP_MULTICAST_TTL   33
++# endif
++# ifndef IP_MULTICAST_LOOP
++#   define IP_MULTICAST_LOOP  34
++# endif
+ 
+ /* for ddsrt_getifaddrs */
+ # define IFF_UP              0x1
+diff --git a/src/ddsrt/src/environ/zephyr/environ.c b/src/ddsrt/src/environ/zephyr/environ.c
+index 5db647f..4d86949 100644
+--- a/src/ddsrt/src/environ/zephyr/environ.c
++++ b/src/ddsrt/src/environ/zephyr/environ.c
+@@ -36,9 +36,9 @@ ddsrt_getenv(const char *name, const char **value)
+   if (!isenvvar(name))
+     return DDS_RETCODE_BAD_PARAMETER;
+   
+-  /* poor mans getenv, good enough for CYCLONEDDS_URI */
++  /* Zephyr may leave environ NULL when no environment was provided. */
+   name_len = strlen(name);
+-  for (ep = environ; *ep != NULL; ep++)
++  for (ep = environ; ep != NULL && *ep != NULL; ep++)
+   {
+     if (!strncmp(*ep, name, name_len) && (*ep)[name_len] == '=') {
+       *value = *ep + name_len + 1;
+diff --git a/src/ddsrt/src/ifaddrs/zephyr/ifaddrs.c b/src/ddsrt/src/ifaddrs/zephyr/ifaddrs.c
+index 4df20dd..f147b28 100644
+--- a/src/ddsrt/src/ifaddrs/zephyr/ifaddrs.c
++++ b/src/ddsrt/src/ifaddrs/zephyr/ifaddrs.c
+@@ -58,10 +58,10 @@ static void netif_callback(struct net_if *iface, void *cb_data)
+   ddsrt_ifaddrs_t *ifa;
+   struct ifaddrs_data *data = (struct ifaddrs_data*)cb_data;
+ 
+-
+   if ((data->rc != DDS_RETCODE_OK)
+ #if defined(CONFIG_NET_L2_ETHERNET) && defined(CONFIG_NET_L2_DUMMY)
+-    || ((net_if_l2(iface) != &NET_L2_GET_NAME(ETHERNET)) && (net_if_l2(iface) != &NET_L2_GET_NAME(DUMMY)))
++    || ((net_if_l2(iface) != &NET_L2_GET_NAME(ETHERNET)) &&
++        (net_if_l2(iface) != &NET_L2_GET_NAME(DUMMY)))
+ #elif defined(CONFIG_NET_L2_ETHERNET)
+     || (net_if_l2(iface) != &NET_L2_GET_NAME(ETHERNET))
+ #elif defined(CONFIG_NET_L2_DUMMY)
+@@ -72,105 +72,92 @@ static void netif_callback(struct net_if *iface, void *cb_data)
+     return;
+   }
+ 
+-  if (data->getv4 && iface->config.ip.ipv4) {
+-    struct net_if_ipv4 *cfg = iface->config.ip.ipv4;
+-    struct net_if_addr *addr = NULL;
+-    int i;
+-    for (i = 0; i < NET_IF_MAX_IPV4_ADDR && !addr; i++) {
+-      if (cfg->unicast[i].is_used &&
+-          cfg->unicast[i].addr_state == NET_ADDR_PREFERRED &&
+-          cfg->unicast[i].address.family == AF_INET) {
+-        addr = &cfg->unicast[i];
+-      }
+-    }
++  if (data->getv4) {
++    const struct net_in_addr *addr =
++      net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED);
+ 
+-    ifa = ddsrt_calloc_s(1, sizeof(ddsrt_ifaddrs_t));
+-    if (!ifa) {
+-      data->rc = DDS_RETCODE_OUT_OF_RESOURCES;
+-    } else {
+-      ifa->name = ddsrt_strdup(iface->if_dev->dev->name);
+-      if (addr) {
+-        ifa->addr = ddsrt_calloc_s(1, sizeof(struct sockaddr_in));
+-        ifa->netmask = ddsrt_calloc_s(1, sizeof(struct sockaddr_in));
+-        ifa->broadaddr = ddsrt_calloc_s(1, sizeof(struct sockaddr_in));
+-      }
+-      if (!ifa->name || (addr && (!ifa->addr || !ifa->netmask || !ifa->broadaddr))) {
++    if (addr != NULL) {
++      ifa = ddsrt_calloc_s(1, sizeof(ddsrt_ifaddrs_t));
++      if (!ifa) {
+         data->rc = DDS_RETCODE_OUT_OF_RESOURCES;
+       } else {
+-        ifa->type = DDSRT_IFTYPE_UNKNOWN;
+-        ifa->flags = getflags(iface);
+-        ifa->index = net_if_get_by_iface(iface);
+-
+-        if (addr) {
+-          net_ipaddr_copy(&(net_sin(ifa->addr)->sin_addr), &(addr->address.in_addr));
++        ifa->name = ddsrt_strdup(net_if_get_device(iface)->name);
++        ifa->addr = ddsrt_calloc_s(1, sizeof(*ifa->addr));
++        ifa->netmask = ddsrt_calloc_s(1, sizeof(*ifa->netmask));
++        ifa->broadaddr = ddsrt_calloc_s(1, sizeof(*ifa->broadaddr));
++
++        if (!ifa->name || !ifa->addr || !ifa->netmask || !ifa->broadaddr) {
++          data->rc = DDS_RETCODE_OUT_OF_RESOURCES;
++        } else {
++          ifa->type = DDSRT_IFTYPE_UNKNOWN;
++          ifa->flags = getflags(iface);
++          ifa->index = net_if_get_by_iface(iface);
++
++          net_ipaddr_copy(&(net_sin(ifa->addr)->sin_addr), addr);
+           ifa->addr->sa_family = AF_INET;
+ 
+-          net_ipaddr_copy(&(net_sin(ifa->netmask)->sin_addr), &(cfg->netmask));
++          const struct net_in_addr netmask =
++            net_if_ipv4_get_netmask_by_addr(iface, addr);
++          net_ipaddr_copy(&(net_sin(ifa->netmask)->sin_addr), &netmask);
+           ifa->netmask->sa_family = AF_INET;
+ 
+-          ((struct sockaddr_in*)ifa->broadaddr)->sin_addr.s_addr = (net_sin(ifa->addr)->sin_addr.s_addr & net_sin(ifa->netmask)->sin_addr.s_addr) | ~net_sin(ifa->netmask)->sin_addr.s_addr;
++          ((struct sockaddr_in*)ifa->broadaddr)->sin_addr.s_addr =
++            (net_sin(ifa->addr)->sin_addr.s_addr &
++             net_sin(ifa->netmask)->sin_addr.s_addr) |
++            ~net_sin(ifa->netmask)->sin_addr.s_addr;
+           ifa->broadaddr->sa_family = AF_INET;
+         }
+       }
+-    }
+ 
+-    if (data->rc == DDS_RETCODE_OK) {
+-      if (data->prev) {
+-        data->prev->next = ifa;
++      if (data->rc == DDS_RETCODE_OK) {
++        if (data->prev) {
++          data->prev->next = ifa;
++        } else {
++          data->first = ifa;
++        }
++        data->prev = ifa;
+       } else {
+-        data->first = ifa;
++        ddsrt_freeifaddrs(ifa);
+       }
+-      data->prev = ifa;
+-    } else {
+-      ddsrt_freeifaddrs(ifa);
+     }
+   }
+ 
+ #if DDSRT_HAVE_IPV6
+-  if (data->getv6 && iface->config.ip.ipv6) {
+-    struct net_if_ipv6 *cfg = iface->config.ip.ipv6;
+-    struct net_if_addr *addr = NULL;
+-    int i;
+-    for (i = 0; i < NET_IF_MAX_IPV6_ADDR; i++) {
+-      if (cfg->unicast[i].is_used &&
+-          cfg->unicast[i].addr_state == NET_ADDR_PREFERRED &&
+-          cfg->unicast[i].address.family == AF_INET6 &&
+-          !net_ipv6_is_ll_addr(&cfg->unicast[i].address.in6_addr)) {
+-        addr = &cfg->unicast[i];
+-      }
+-    }
+-
+-    ifa = ddsrt_calloc_s(1, sizeof(ddsrt_ifaddrs_t));
+-    if (!ifa) {
+-      data->rc = DDS_RETCODE_OUT_OF_RESOURCES;
+-    } else {
+-      ifa->name = ddsrt_strdup(iface->if_dev->dev->name);
+-      if (addr) {
+-        ifa->addr = ddsrt_calloc_s(1, sizeof(struct sockaddr_in6));
+-      }
+-      if (!ifa->name || (addr && (!ifa->addr))) {
++  if (data->getv6) {
++    struct net_if *address_iface = iface;
++    const struct net_in6_addr *addr =
++      net_if_ipv6_get_global_addr(NET_ADDR_PREFERRED, &address_iface);
++
++    if (addr != NULL) {
++      ifa = ddsrt_calloc_s(1, sizeof(ddsrt_ifaddrs_t));
++      if (!ifa) {
+         data->rc = DDS_RETCODE_OUT_OF_RESOURCES;
+       } else {
+-        ifa->type = DDSRT_IFTYPE_UNKNOWN;
+-        ifa->flags = getflags(iface);
+-        ifa->index = net_if_get_by_iface(iface);
++        ifa->name = ddsrt_strdup(net_if_get_device(iface)->name);
++        ifa->addr = ddsrt_calloc_s(1, sizeof(*ifa->addr));
+ 
+-        if (addr) {
+-          net_ipaddr_copy(&(net_sin6(ifa->addr)->sin6_addr), &(addr->address.in6_addr));
++        if (!ifa->name || !ifa->addr) {
++          data->rc = DDS_RETCODE_OUT_OF_RESOURCES;
++        } else {
++          ifa->type = DDSRT_IFTYPE_UNKNOWN;
++          ifa->flags = getflags(iface);
++          ifa->index = net_if_get_by_iface(iface);
++
++          net_ipaddr_copy(&(net_sin6(ifa->addr)->sin6_addr), addr);
+           ifa->addr->sa_family = AF_INET6;
+         }
+       }
+-    }
+ 
+-    if (data->rc == DDS_RETCODE_OK) {
+-      if (data->prev) {
+-        data->prev->next = ifa;
++      if (data->rc == DDS_RETCODE_OK) {
++        if (data->prev) {
++          data->prev->next = ifa;
++        } else {
++          data->first = ifa;
++        }
++        data->prev = ifa;
+       } else {
+-        data->first = ifa;
++        ddsrt_freeifaddrs(ifa);
+       }
+-      data->prev = ifa;
+-    } else {
+-      ddsrt_freeifaddrs(ifa);
+     }
+   }
+ #endif
+diff --git a/src/ddsrt/src/sockets/posix/socket.c b/src/ddsrt/src/sockets/posix/socket.c
+index d702f4b..cd4e5c4 100644
+--- a/src/ddsrt/src/sockets/posix/socket.c
++++ b/src/ddsrt/src/sockets/posix/socket.c
+@@ -450,13 +450,13 @@ ddsrt_recv(
+   return recv_error_to_retcode(errno);
+ }
+ 
+-#if (LWIP_SOCKET && !defined(recvmsg)) || defined(__ZEPHYR__)
+-static ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
++#if defined(__ZEPHYR__) || (LWIP_SOCKET && !defined(recvmsg))
++static ssize_t recvmsg_fallback(int sockfd, struct msghdr *msg, int flags)
+ {
+   assert(msg->msg_iovlen == 1);
+-  assert(msg->msg_controllen == 0);
+ 
+   msg->msg_flags = 0;
++  msg->msg_controllen = 0;
+ 
+   return recvfrom(
+     sockfd,
+@@ -466,7 +466,7 @@ static ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags)
+     msg->msg_name,
+    &msg->msg_namelen);
+ }
+-#endif /* LWIP_SOCKET */
++#endif /* __ZEPHYR__ || (LWIP_SOCKET && !defined(recvmsg)) */
+ 
+ dds_return_t
+ ddsrt_recvmsg(
+@@ -477,7 +477,12 @@ ddsrt_recvmsg(
+ {
+   ssize_t n;
+ 
+-  if ((n = recvmsg(sockext->sock, msg, flags)) != -1) {
++#if defined(__ZEPHYR__) || (LWIP_SOCKET && !defined(recvmsg))
++  n = recvmsg_fallback(sockext->sock, msg, flags);
++#else
++  n = recvmsg(sockext->sock, msg, flags);
++#endif
++  if (n != -1) {
+     assert(n >= 0);
+     *rcvd = (size_t) n;
+     return DDS_RETCODE_OK;
+diff --git a/src/ddsrt/src/sync/posix/sync.c b/src/ddsrt/src/sync/posix/sync.c
+index 2343828..99f5e5b 100644
+--- a/src/ddsrt/src/sync/posix/sync.c
++++ b/src/ddsrt/src/sync/posix/sync.c
+@@ -175,6 +175,13 @@ static bool ddsrt_cond_waituntil_impl (pthread_cond_t *cond, pthread_mutex_t *mu
+     case 0:
+       return true;
+     case ETIMEDOUT:
++#if defined(__ZEPHYR__) && defined(CYCLONEDDS_ZEPHYR_CONDVAR_TIMEOUT_RELOCK)
++      /* Zephyr v4.4.0's k_condvar_wait() leaves the mutex unlocked on a
++         timeout (fixed upstream by Zephyr commit 5c6c6837cc4).  POSIX
++         requires pthread_cond_timedwait() to return with it locked. */
++      if (pthread_mutex_lock (mutex) != 0)
++        abort ();
++#endif
+       return false;
+     default:
+       break;
+diff --git a/src/ddsrt/src/threads/posix/threads.c b/src/ddsrt/src/threads/posix/threads.c
+index aae0fea..808af57 100644
+--- a/src/ddsrt/src/threads/posix/threads.c
++++ b/src/ddsrt/src/threads/posix/threads.c
+@@ -406,7 +406,7 @@ ddsrt_thread_create (
+       goto err;
+     }
+ 
+-#if !defined(__ZEPHYR__)
++#if !defined(__ZEPHYR__) || defined(CYCLONEDDS_ZEPHYR_EXPLICIT_SCHED)
+     if ((result = pthread_attr_setinheritsched (&pattr, PTHREAD_EXPLICIT_SCHED)) != 0)
+     {
+       DDS_ERROR("ddsrt_thread_create(%s): pthread_attr_setinheritsched(EXPLICIT) failed with error %d\n", name, result);
+
