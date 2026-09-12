@@ -17,9 +17,18 @@ if(CONFIG_ROS2_ZEPHYR)
   set(ROS2_ZEPHYR_DEPS_ROOT "" CACHE PATH "Prepared Phase 5 dependencies")
   set(ROS2_ZEPHYR_CYCLONEDDS_SOURCE "" CACHE PATH "Pinned Cyclone DDS source")
   set(ROS2_ZEPHYR_HOST_IDLC "" CACHE FILEPATH "Host idlc executable")
-  set(ROS2_ZEPHYR_CYCLONEDDS_URI
-    "<CycloneDDS><Domain><General><NetworkInterfaceAddress>127.0.0.1</NetworkInterfaceAddress><AllowMulticast>false</AllowMulticast><MaxMessageSize>1400B</MaxMessageSize></General><Sizing><ReceiveBufferSize>8KiB</ReceiveBufferSize><ReceiveBufferChunkSize>4KiB</ReceiveBufferChunkSize></Sizing><Discovery><ParticipantIndex>0</ParticipantIndex><MaxAutoParticipantIndex>0</MaxAutoParticipantIndex><Peers><Peer Address=\"127.0.0.1\"/></Peers></Discovery><Internal><MultipleReceiveThreads>false</MultipleReceiveThreads></Internal></Domain></CycloneDDS>"
+  set(ros2_zephyr_default_cyclonedds_uri
+    "<CycloneDDS><Domain><General><AllowMulticast>false</AllowMulticast><MaxMessageSize>1400B</MaxMessageSize></General><Sizing><ReceiveBufferSize>8KiB</ReceiveBufferSize><ReceiveBufferChunkSize>4KiB</ReceiveBufferChunkSize></Sizing><Discovery><ParticipantIndex>0</ParticipantIndex><MaxAutoParticipantIndex>0</MaxAutoParticipantIndex><Peers><Peer Address=\"127.0.0.1\"/></Peers></Discovery><Internal><MultipleReceiveThreads>false</MultipleReceiveThreads></Internal></Domain></CycloneDDS>")
+  set(ros2_zephyr_legacy_cyclonedds_uri
+    "<CycloneDDS><Domain><General><NetworkInterfaceAddress>127.0.0.1</NetworkInterfaceAddress><AllowMulticast>false</AllowMulticast><MaxMessageSize>1400B</MaxMessageSize></General><Sizing><ReceiveBufferSize>8KiB</ReceiveBufferSize><ReceiveBufferChunkSize>4KiB</ReceiveBufferChunkSize></Sizing><Discovery><ParticipantIndex>0</ParticipantIndex><MaxAutoParticipantIndex>0</MaxAutoParticipantIndex><Peers><Peer Address=\"127.0.0.1\"/></Peers></Discovery><Internal><MultipleReceiveThreads>false</MultipleReceiveThreads></Internal></Domain></CycloneDDS>")
+  set(ROS2_ZEPHYR_CYCLONEDDS_URI "${ros2_zephyr_default_cyclonedds_uri}"
     CACHE STRING "Cyclone DDS XML used by the statically built RMW")
+  # Migrate only our obsolete default. Preserve intentional user overrides.
+  if("${ROS2_ZEPHYR_CYCLONEDDS_URI}" STREQUAL
+     "${ros2_zephyr_legacy_cyclonedds_uri}")
+    set(ROS2_ZEPHYR_CYCLONEDDS_URI "${ros2_zephyr_default_cyclonedds_uri}"
+      CACHE STRING "Cyclone DDS XML used by the statically built RMW" FORCE)
+  endif()
 
   foreach(required_path
       ROS2_ZEPHYR_LAB_ROOT

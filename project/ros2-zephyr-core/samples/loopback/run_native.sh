@@ -22,6 +22,7 @@ set -e
 if [[ "${status}" -ne 0 ]] ||
    ! rg -q '^PHASE5_LOOPBACK_PASS value=42424242 array=10,11,12,13$' "${LOG_FILE}" ||
    ! rg -q '^PHASE5_ALLOC ' "${LOG_FILE}" ||
+   ! rg -q '^PHASE5_STACK_TOTAL ' "${LOG_FILE}" ||
    ! rg -q '^PHASE5_CLEANUP status=0 ' "${LOG_FILE}"; then
   cat "${LOG_FILE}" >&2
   echo "Phase 5 native loopback failed (status=${status})" >&2

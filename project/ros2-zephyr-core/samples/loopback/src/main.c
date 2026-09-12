@@ -34,6 +34,38 @@ static allocation_metrics_t dds_metrics;
 static volatile bool received;
 static phase4_test_msgs__msg__NestedFixed received_message;
 
+struct thread_metrics {
+  size_t count;
+  size_t reserved_bytes;
+};
+
+static void report_thread(const struct k_thread * thread, void * user_data)
+{
+  struct thread_metrics * metrics = user_data;
+  size_t unused = 0U;
+  const int stack_result = k_thread_stack_space_get(thread, &unused);
+  const char * name = k_thread_name_get((k_tid_t)thread);
+
+  metrics->count++;
+  metrics->reserved_bytes += thread->stack_info.size;
+  printf("PHASE5_STACK name=%s priority=%d reserved=%zu unused=%s",
+    name != NULL && name[0] != '\0' ? name : "unnamed",
+    k_thread_priority_get((k_tid_t)thread), thread->stack_info.size,
+    stack_result == 0 ? "measured" : "unavailable");
+  if (stack_result == 0) {
+    printf(" unused_bytes=%zu", unused);
+  }
+  printf("\n");
+}
+
+static void report_threads(void)
+{
+  struct thread_metrics metrics = {0};
+  k_thread_foreach(report_thread, &metrics);
+  printf("PHASE5_STACK_TOTAL threads=%zu reserved=%zu\n",
+    metrics.count, metrics.reserved_bytes);
+}
+
 static void metrics_add(allocation_metrics_t * metrics, size_t size)
 {
   metrics->calls++;
@@ -159,30 +191,49 @@ int main(void)
     .zero_allocate = tracked_zero_allocate,
     .state = &ros_metrics,
   };
-  rclc_support_t support;
+  rclc_support_t support = {0};
   rcl_node_t node = rcl_get_zero_initialized_node();
   rcl_publisher_t publisher = rcl_get_zero_initialized_publisher();
   rcl_subscription_t subscription = rcl_get_zero_initialized_subscription();
   rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
   phase4_test_msgs__msg__NestedFixed outgoing = {0};
   phase4_test_msgs__msg__NestedFixed incoming = {0};
+  bool support_initialized = false;
+  bool node_initialized = false;
+  bool publisher_initialized = false;
+  bool subscription_initialized = false;
+  bool executor_initialized = false;
   int status = 1;
 
-  if (!check(rclc_support_init(&support, 0, NULL, &allocator), "support_init") ||
-    !check(rclc_node_init_default(&node, "phase5_zephyr", "", &support), "node_init") ||
-    !check(rclc_publisher_init_best_effort(
+  if (!check(rclc_support_init(&support, 0, NULL, &allocator), "support_init")) {
+    goto cleanup;
+  }
+  support_initialized = true;
+  if (!check(rclc_node_init_default(&node, "phase5_zephyr", "", &support), "node_init")) {
+    goto cleanup;
+  }
+  node_initialized = true;
+  if (!check(rclc_publisher_init_best_effort(
       &publisher, &node,
       ROSIDL_GET_MSG_TYPE_SUPPORT(phase4_test_msgs, msg, NestedFixed),
-      "phase5_loopback"), "publisher_init") ||
-    !check(rclc_subscription_init_best_effort(
+      "phase5_loopback"), "publisher_init")) {
+    goto cleanup;
+  }
+  publisher_initialized = true;
+  if (!check(rclc_subscription_init_best_effort(
       &subscription, &node,
       ROSIDL_GET_MSG_TYPE_SUPPORT(phase4_test_msgs, msg, NestedFixed),
-      "phase5_loopback"), "subscription_init") ||
-    !check(rclc_executor_init(&executor, &support.context, 1U, &allocator), "executor_init") ||
-    !check(rclc_executor_add_subscription(
+      "phase5_loopback"), "subscription_init")) {
+    goto cleanup;
+  }
+  subscription_initialized = true;
+  if (!check(rclc_executor_init(&executor, &support.context, 1U, &allocator), "executor_init")) {
+    goto cleanup;
+  }
+  executor_initialized = true;
+  if (!check(rclc_executor_add_subscription(
       &executor, &subscription, &incoming, subscription_callback, ON_NEW_DATA),
-      "executor_add_subscription"))
-  {
+      "executor_add_subscription")) {
     goto cleanup;
   }
 
@@ -223,20 +274,26 @@ int main(void)
     ros_setup_calls, ros_metrics.calls - ros_setup_calls,
     dds_setup_calls, dds_metrics.calls - dds_setup_calls,
     ros_metrics.high_water_bytes, dds_metrics.high_water_bytes);
+  report_threads();
   status = 0;
 
 cleanup:
-  (void)rclc_executor_fini(&executor);
-  if (rcl_subscription_fini(&subscription, &node) != RCL_RET_OK) {
+  if (executor_initialized && rclc_executor_fini(&executor) != RCL_RET_OK) {
     status = 1;
   }
-  if (rcl_publisher_fini(&publisher, &node) != RCL_RET_OK) {
+  if (subscription_initialized &&
+    rcl_subscription_fini(&subscription, &node) != RCL_RET_OK) {
     status = 1;
   }
-  if (rcl_node_fini(&node) != RCL_RET_OK) {
+  if (publisher_initialized && rcl_publisher_fini(&publisher, &node) != RCL_RET_OK) {
     status = 1;
   }
-  (void)rclc_support_fini(&support);
+  if (node_initialized && rcl_node_fini(&node) != RCL_RET_OK) {
+    status = 1;
+  }
+  if (support_initialized && rclc_support_fini(&support) != RCL_RET_OK) {
+    status = 1;
+  }
   printf("PHASE5_CLEANUP status=%d ros_live=%zu dds_live=%zu\n",
     status, ros_metrics.live_bytes, dds_metrics.live_bytes);
 #ifdef CONFIG_ARCH_POSIX
