@@ -1,0 +1,106 @@
+diff --git a/rosidl_runtime_c/CMakeLists.txt b/rosidl_runtime_c/CMakeLists.txt
+index 41d663f..344f851 100644
+--- a/rosidl_runtime_c/CMakeLists.txt
++++ b/rosidl_runtime_c/CMakeLists.txt
+@@ -18,7 +18,10 @@ endif()
+ find_package(ament_cmake REQUIRED)
+ find_package(ament_cmake_ros_core REQUIRED)
+ find_package(rcutils REQUIRED)
+-find_package(rosidl_buffer REQUIRED)
++option(ROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER "Enable native buffer support" ON)
++if(ROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER)
++  find_package(rosidl_buffer REQUIRED)
++endif()
+ find_package(rosidl_typesupport_interface REQUIRED)
+ 
+ file(GLOB type_description_sources "src/type_description/*.c")
+@@ -39,9 +42,15 @@ target_include_directories(${PROJECT_NAME} PUBLIC
+   "$<INSTALL_INTERFACE:include/${PROJECT_NAME}>")
+ target_link_libraries(${PROJECT_NAME} PUBLIC
+   rcutils::rcutils
+-  rosidl_buffer::rosidl_buffer
+   rosidl_typesupport_interface::rosidl_typesupport_interface
+ )
++if(ROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER)
++  target_link_libraries(${PROJECT_NAME} PUBLIC
++    rosidl_buffer::rosidl_buffer
++  )
++  target_compile_definitions(${PROJECT_NAME} PRIVATE
++    ROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER)
++endif()
+ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang")
+   set_target_properties(${PROJECT_NAME} PROPERTIES
+     COMPILE_OPTIONS -Wall -Wextra -Wpedantic)
+@@ -57,7 +66,10 @@ if(BUILD_TESTING AND NOT RCUTILS_DISABLE_FAULT_INJECTION)
+   target_compile_definitions(${PROJECT_NAME} PUBLIC RCUTILS_ENABLE_FAULT_INJECTION)
+ endif()
+ 
+-ament_export_dependencies(rcutils rosidl_buffer rosidl_typesupport_interface)
++ament_export_dependencies(rcutils rosidl_typesupport_interface)
++if(ROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER)
++  ament_export_dependencies(rosidl_buffer)
++endif()
+ 
+ # Export old-style CMake variables
+ ament_export_include_directories("include/${PROJECT_NAME}")
+diff --git a/rosidl_runtime_c/src/primitives_sequence_functions.c b/rosidl_runtime_c/src/primitives_sequence_functions.c
+index 5b5ff65..a5e79b2 100644
+--- a/rosidl_runtime_c/src/primitives_sequence_functions.c
++++ b/rosidl_runtime_c/src/primitives_sequence_functions.c
+@@ -19,7 +19,9 @@
+ 
+ #include <rcutils/allocator.h>
+ 
++#ifdef ROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER
+ #include "rosidl_buffer/c_helpers.h"
++#endif
+ #include "rosidl_runtime_c/primitives_sequence_functions.h"
+ 
+ #define ROSIDL_GENERATOR_C__DEFINE_PRIMITIVE_SEQUENCE_FUNCTIONS(STRUCT_NAME, TYPE_NAME) \
+@@ -55,9 +57,12 @@
+       return; \
+     } \
+     if (sequence->is_rosidl_buffer) { \
++      /* The fixed Zephyr profile cannot construct or destroy native buffers. */ \
++      assert(!sequence->owns_rosidl_buffer); \
++      (void) sequence->owns_rosidl_buffer; \
++      /* Native-buffer-enabled builds retain the standard destruction path. */ \
++      /* NOLINTNEXTLINE(bugprone-macro-parentheses) */ \
++      ROSIDL_BUFFER_DESTROY(sequence); \
+-      if (sequence->owns_rosidl_buffer) { \
+-        rosidl_buffer_uint8_destroy(sequence->data); \
+-      } \
+       sequence->data = NULL; \
+       sequence->size = 0; \
+       sequence->capacity = 0; \
+@@ -99,6 +104,9 @@
+     if (!input || !output) { \
+       return false; \
+     } \
++    if (ROSIDL_BUFFER_SEQUENCE_UNSUPPORTED(input, output)) { \
++      return false; \
++    } \
+     if (output->capacity < input->size) { \
+       if (input->size > SIZE_MAX / sizeof(TYPE_NAME)) { \
+         return false; \
+@@ -125,6 +133,20 @@
+     return true; \
+   }
+ 
++#ifdef ROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER
++#define ROSIDL_BUFFER_DESTROY(sequence) \
++  do { \
++    if ((sequence)->owns_rosidl_buffer) { \
++      rosidl_buffer_uint8_destroy((sequence)->data); \
++    } \
++  } while (0)
++#define ROSIDL_BUFFER_SEQUENCE_UNSUPPORTED(input, output) false
++#else
++#define ROSIDL_BUFFER_DESTROY(sequence) ((void) (sequence))
++#define ROSIDL_BUFFER_SEQUENCE_UNSUPPORTED(input, output) \
++  ((input)->is_rosidl_buffer || (output)->is_rosidl_buffer)
++#endif
++
+ 
+ // array functions for all basic types
+ ROSIDL_GENERATOR_C__DEFINE_PRIMITIVE_SEQUENCE_FUNCTIONS(float, float)

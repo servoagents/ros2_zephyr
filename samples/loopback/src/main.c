@@ -13,6 +13,7 @@
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
+#include <rcutils/logging.h>
 #include <zephyr/kernel.h>
 #ifdef CONFIG_ARCH_POSIX
 #include "posix_board_if.h"
@@ -284,6 +285,9 @@ cleanup:
     status = 1;
   }
   if (support_initialized && rclc_support_fini(&support) != RCL_RET_OK) {
+    status = 1;
+  }
+  if (rcutils_logging_shutdown() != RCUTILS_RET_OK) {
     status = 1;
   }
   printf("ROS2_ZEPHYR_CLEANUP status=%d ros_live=%zu dds_live=%zu\n", status,

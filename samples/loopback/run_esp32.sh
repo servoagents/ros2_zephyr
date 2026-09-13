@@ -4,13 +4,23 @@ set -euo pipefail
 
 SAMPLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPOSITORY_ROOT="$(cd "${SAMPLE_DIR}/../.." && pwd)"
+ROS_DISTRO="${ROS2_ZEPHYR_ROS_DISTRO:-lyrical}"
+ENVIRONMENT_FILE="${ROS2_ZEPHYR_ENV_FILE:-${REPOSITORY_ROOT}/build/zephyr-env-${ROS_DISTRO}.sh}"
 SERIAL_DEVICE="${1:-/dev/ttyUSB0}"
-OUTPUT_DIR="${2:-${REPOSITORY_ROOT}/results/esp32}"
+OUTPUT_DIR="${2:-${REPOSITORY_ROOT}/results/${ROS_DISTRO}/esp32}"
 LOG_FILE="${OUTPUT_DIR}/loopback.log"
+PYTHON_EXECUTABLE="${PYTHON:-python3}"
+
+if [[ ! -f "${ENVIRONMENT_FILE}" ]]; then
+  echo "missing ${ENVIRONMENT_FILE}; run scripts/setup.sh" >&2
+  exit 2
+fi
+# shellcheck disable=SC1090
+source "${ENVIRONMENT_FILE}"
 
 mkdir -p "${OUTPUT_DIR}"
 set +e
-python "${SAMPLE_DIR}/capture_esp32.py" \
+"${PYTHON_EXECUTABLE}" "${SAMPLE_DIR}/capture_esp32.py" \
   "${SERIAL_DEVICE}" \
   --timeout 30 \
   --until 'ROS2_ZEPHYR_CLEANUP status=0 ros_live=0 dds_live=0' \

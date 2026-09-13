@@ -1,0 +1,111 @@
+diff --git a/rosidl_typesupport_introspection_c/cmake/rosidl_typesupport_introspection_c_generate_interfaces.cmake b/rosidl_typesupport_introspection_c/cmake/rosidl_typesupport_introspection_c_generate_interfaces.cmake
+index aaf92549..116a2c5e 100644
+--- a/rosidl_typesupport_introspection_c/cmake/rosidl_typesupport_introspection_c_generate_interfaces.cmake
++++ b/rosidl_typesupport_introspection_c/cmake/rosidl_typesupport_introspection_c_generate_interfaces.cmake
+@@ -22,7 +22,9 @@ find_package(rosidl_cmake REQUIRED)
+ find_package(rosidl_runtime_c REQUIRED)
+ find_package(rosidl_typesupport_interface REQUIRED)
+ find_package(rosidl_typesupport_introspection_c REQUIRED)
+-find_package(rosidl_buffer REQUIRED)
++if(ROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER)
++  find_package(rosidl_buffer REQUIRED)
++endif()
+ 
+ set(_output_path
+   "${CMAKE_CURRENT_BINARY_DIR}/rosidl_typesupport_introspection_c/${PROJECT_NAME}")
+@@ -153,8 +155,14 @@ target_link_libraries(${rosidl_generate_interfaces_TARGET}${_target_suffix} PUBL
+ target_link_libraries(${rosidl_generate_interfaces_TARGET}${_target_suffix} PUBLIC
+   rosidl_runtime_c::rosidl_runtime_c
+   rosidl_typesupport_interface::rosidl_typesupport_interface
+-  rosidl_typesupport_introspection_c::rosidl_typesupport_introspection_c
+-  rosidl_buffer::rosidl_buffer)
++  rosidl_typesupport_introspection_c::rosidl_typesupport_introspection_c)
++
++if(ROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER)
++  target_link_libraries(${rosidl_generate_interfaces_TARGET}${_target_suffix} PUBLIC
++    rosidl_buffer::rosidl_buffer)
++  target_compile_definitions(${rosidl_generate_interfaces_TARGET}${_target_suffix} PRIVATE
++    ROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER)
++endif()
+ 
+ foreach(_pkg_name ${rosidl_generate_interfaces_DEPENDENCY_PACKAGE_NAMES})
+   target_link_libraries(
+diff --git a/rosidl_typesupport_introspection_c/resource/msg__type_support.c.em b/rosidl_typesupport_introspection_c/resource/msg__type_support.c.em
+index 5da24ff2..2bb29924 100644
+--- a/rosidl_typesupport_introspection_c/resource/msg__type_support.c.em
++++ b/rosidl_typesupport_introspection_c/resource/msg__type_support.c.em
+@@ -42,7 +42,7 @@ header_files = [
+ 
+ function_prefix = '__'.join([package_name] + list(interface_path.parents[0].parts) + [message.structure.namespaced_type.name]) + '__rosidl_typesupport_introspection_c'
+ if any_buffer_field:
+-    header_files.append('rosidl_buffer/c_helpers.h')
++    header_files.append('assert.h')
+ }@
+ @[for header_file in header_files]@
+ @[    if header_file in include_directives]@
+@@ -58,6 +58,21 @@ if any_buffer_field:
+ @[    end if]@
+ @[end for]@
+ 
++@[if any_buffer_field]@
++#ifdef ROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER
++#include "rosidl_buffer/c_helpers.h"
++#define ROSIDL_TYPESUPPORT_INTROSPECTION_C_VALIDATE_BUFFER(member) \
++  do { \
++    if ((member)->is_rosidl_buffer) { \
++      rosidl_buffer_uint8_throw_if_not_cpu((const void *)(member)->data); \
++    } \
++  } while (0)
++#else
++#define ROSIDL_TYPESUPPORT_INTROSPECTION_C_VALIDATE_BUFFER(member) \
++  assert(!(member)->is_rosidl_buffer)
++#endif
++@[end if]@
++
+ @#<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ @# Collect necessary include directives for all members
+ @{
+@@ -142,9 +157,7 @@ size_t @(function_prefix)__size_function__@(message.structure.namespaced_type.na
+ {
+   const @(idl_type_to_c(member.type)) * member =
+     (const @(idl_type_to_c(member.type)) *)(untyped_member);
+-  if (member->is_rosidl_buffer) {
+-    rosidl_buffer_uint8_throw_if_not_cpu((const void *)member->data);
+-  }
++  ROSIDL_TYPESUPPORT_INTROSPECTION_C_VALIDATE_BUFFER(member);
+   return member->size;
+ }
+ 
+@@ -153,9 +166,7 @@ const void * @(function_prefix)__get_const_function__@(message.structure.namespa
+ {
+   const @(idl_type_to_c(member.type)) * member =
+     (const @(idl_type_to_c(member.type)) *)(untyped_member);
+-  if (member->is_rosidl_buffer) {
+-    rosidl_buffer_uint8_throw_if_not_cpu((const void *)member->data);
+-  }
++  ROSIDL_TYPESUPPORT_INTROSPECTION_C_VALIDATE_BUFFER(member);
+   return &member->data[index];
+ }
+ 
+@@ -164,9 +175,7 @@ void * @(function_prefix)__get_function__@(message.structure.namespaced_type.nam
+ {
+   @(idl_type_to_c(member.type)) * member =
+     (@(idl_type_to_c(member.type)) *)(untyped_member);
+-  if (member->is_rosidl_buffer) {
+-    rosidl_buffer_uint8_throw_if_not_cpu((const void *)member->data);
+-  }
++  ROSIDL_TYPESUPPORT_INTROSPECTION_C_VALIDATE_BUFFER(member);
+   return &member->data[index];
+ }
+ 
+@@ -195,9 +204,7 @@ bool @(function_prefix)__resize_function__@(message.structure.namespaced_type.na
+ {
+   @(idl_type_to_c(member.type)) * member =
+     (@(idl_type_to_c(member.type)) *)(untyped_member);
+-  if (member->is_rosidl_buffer) {
+-    rosidl_buffer_uint8_throw_if_not_cpu((const void *)member->data);
+-  }
++  ROSIDL_TYPESUPPORT_INTROSPECTION_C_VALIDATE_BUFFER(member);
+   @(idl_type_to_c(member.type))__fini(member);
+   return @(idl_type_to_c(member.type))__init(member, size);
+ }

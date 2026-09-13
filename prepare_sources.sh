@@ -3,7 +3,8 @@
 set -euo pipefail
 
 module_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-deps_root="${ROS2_ZEPHYR_DEPS_ROOT:-${module_dir}/build/deps}"
+ros_distro="${ROS2_ZEPHYR_ROS_DISTRO:-lyrical}"
+deps_root="${ROS2_ZEPHYR_DEPS_ROOT:-${module_dir}/build/deps/${ros_distro}}"
 
 for command in git vcs colcon; do
   command -v "${command}" >/dev/null || {
@@ -15,8 +16,12 @@ done
 
 import_group() {
   local group="$1"
-  local manifest="${module_dir}/dependencies/${group}.repos"
+  local manifest="${module_dir}/dependencies/${group}-${ros_distro}.repos"
   local destination="${deps_root}/${group}/src"
+
+  if [[ ! -f "${manifest}" ]]; then
+    manifest="${module_dir}/dependencies/${group}.repos"
+  fi
 
   mkdir -p "${destination}"
   if ! "${module_dir}/verify_sources.py" "${manifest}" "${destination}" \

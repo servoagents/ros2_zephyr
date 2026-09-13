@@ -4,9 +4,10 @@ set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 action="${1:-help}"
+ros_distro="${ROS2_ZEPHYR_ROS_DISTRO:-lyrical}"
 
 load_environment() {
-  local environment_file="${ROS2_ZEPHYR_ENV_FILE:-${repository_root}/build/zephyr-env.sh}"
+  local environment_file="${ROS2_ZEPHYR_ENV_FILE:-${repository_root}/build/zephyr-env-${ros_distro}.sh}"
   if [[ ! -f "${environment_file}" ]]; then
     echo "missing ${environment_file}; run scripts/setup.sh" >&2
     exit 2
@@ -16,7 +17,7 @@ load_environment() {
 }
 
 esp32_build_dir() {
-  printf '%s\n' "${ROS2_ZEPHYR_ESP32_BUILD_DIR:-${repository_root}/build/esp32}"
+  printf '%s\n' "${ROS2_ZEPHYR_ESP32_BUILD_DIR:-${repository_root}/build/${ros_distro}/esp32}"
 }
 
 require_esp32_firmware() {

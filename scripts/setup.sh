@@ -6,15 +6,32 @@ repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 zephyr_version="v4.4.0"
 sdk_version="1.0.1"
-sdk_toolchain="xtensa-espressif_esp32_zephyr-elf"
+sdk_toolchains=(
+  xtensa-espressif_esp32_zephyr-elf
+  xtensa-espressif_esp32s3_zephyr-elf
+)
+ros_distro="${ROS2_ZEPHYR_ROS_DISTRO:-lyrical}"
+
+case "${ros_distro}" in
+lyrical | kilted) ;;
+*)
+  echo "unsupported ROS 2 distribution: ${ros_distro}" >&2
+  exit 2
+  ;;
+esac
 
 workspace="${ROS2_ZEPHYR_WORKSPACE:-${repository_root}/build/zephyr-${zephyr_version#v}}"
 venv="${ROS2_ZEPHYR_VENV:-${repository_root}/build/venv}"
 sdk_dir="${ZEPHYR_SDK_INSTALL_DIR:-${repository_root}/build/zephyr-sdk-${sdk_version}}"
-deps_root="${ROS2_ZEPHYR_DEPS_ROOT:-${repository_root}/build/deps}"
-host_build="${repository_root}/build/host/cyclonedds-build"
-host_install="${repository_root}/build/host/cyclonedds-install"
-environment_file="${repository_root}/build/zephyr-env.sh"
+deps_root="${ROS2_ZEPHYR_DEPS_ROOT:-${repository_root}/build/deps/${ros_distro}}"
+host_build="${repository_root}/build/host/${ros_distro}/cyclonedds-build"
+host_install="${repository_root}/build/host/${ros_distro}/cyclonedds-install"
+environment_file="${repository_root}/build/zephyr-env-${ros_distro}.sh"
+host_manifest="${repository_root}/dependencies/host-${ros_distro}.repos"
+target_manifest="${repository_root}/dependencies/target-${ros_distro}.repos"
+
+[[ -f "${host_manifest}" ]] || host_manifest="${repository_root}/dependencies/host.repos"
+[[ -f "${target_manifest}" ]] || target_manifest="${repository_root}/dependencies/target.repos"
 
 for command in git cmake ninja python3; do
   command -v "${command}" >/dev/null || {
@@ -66,14 +83,21 @@ python -m pip install \
   vcstool
 west blobs fetch hal_espressif
 
-if [[ "${ROS2_ZEPHYR_SKIP_SDK:-0}" != "1" ]] &&
-  [[ ! -x "${sdk_dir}/gnu/${sdk_toolchain}/bin/${sdk_toolchain}-gcc" ]]; then
+sdk_complete=1
+for sdk_toolchain in "${sdk_toolchains[@]}"; do
+  if [[ ! -x "${sdk_dir}/gnu/${sdk_toolchain}/bin/${sdk_toolchain}-gcc" ]]; then
+    sdk_complete=0
+  fi
+done
+
+if [[ "${ROS2_ZEPHYR_SKIP_SDK:-0}" != "1" && "${sdk_complete}" != "1" ]]; then
   west sdk install --version "${sdk_version}" --install-dir "${sdk_dir}" \
-    --gnu-toolchains "${sdk_toolchain}"
+    --gnu-toolchains "${sdk_toolchains[@]}"
 fi
 
 cd "${repository_root}"
-ROS2_ZEPHYR_DEPS_ROOT="${deps_root}" ./prepare_sources.sh
+ROS2_ZEPHYR_DEPS_ROOT="${deps_root}" ROS2_ZEPHYR_ROS_DISTRO="${ros_distro}" \
+  ./prepare_sources.sh
 
 cyclonedds_source="${deps_root}/platform/src/eclipse/cyclonedds"
 "${repository_root}/scripts/apply_cyclonedds_patches.sh" "${cyclonedds_source}"
@@ -89,6 +113,9 @@ mkdir -p "$(dirname "${environment_file}")"
 {
   printf 'source %q\n' "${venv}/bin/activate"
   printf 'export ROS2_ZEPHYR_WORKSPACE=%q\n' "${workspace}"
+  printf 'export ROS2_ZEPHYR_ROS_DISTRO=%q\n' "${ros_distro}"
+  printf 'export ROS2_ZEPHYR_HOST_MANIFEST=%q\n' "${host_manifest}"
+  printf 'export ROS2_ZEPHYR_TARGET_MANIFEST=%q\n' "${target_manifest}"
   printf 'export ZEPHYR_BASE=%q\n' "${workspace}/zephyr"
   printf 'export ZEPHYR_SDK_INSTALL_DIR=%q\n' "${sdk_dir}"
   printf 'export ZEPHYR_TOOLCHAIN_VARIANT=zephyr\n'
@@ -100,4 +127,5 @@ mkdir -p "$(dirname "${environment_file}")"
     "${workspace}/modules/lib/picolibc;${workspace}/modules/hal/espressif;${workspace}/modules/crypto/mbedtls;${workspace}/modules/crypto/tf-psa-crypto"
 } >"${environment_file}"
 
-echo "Setup complete. Build the native sample with: scripts/run.sh native"
+echo "Setup complete for ROS 2 ${ros_distro}."
+echo "Use ROS2_ZEPHYR_ENV_FILE=${environment_file} scripts/run.sh native"

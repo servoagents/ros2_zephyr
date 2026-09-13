@@ -6,72 +6,72 @@ repositories:
   micro_ros/rcl:
     type: git
     url: https://github.com/micro-ROS/rcl.git
-    version: ec6ff3087d17d6022182123b5bcfeb1fb669596a
+    version: 34bebf710402ab2c89e4cbb2aeb8b1ca8562603b
   ros2/rclc:
     type: git
     url: https://github.com/ros2/rclc.git
-    version: 17697156bb0eac0ada67b59c31674a0f94b8be20
+    version: 6b90796c660d22fc27df229beefdc62138f5286a
   micro_ros/rcutils:
     type: git
     url: https://github.com/micro-ROS/rcutils.git
-    version: f40bb2973602f942b4849cdf25860eb9d1695daf
+    version: 73d448eb696bfa4a4d21705415f93a955992e403
   micro_ros/rosidl_typesupport:
     type: git
     url: https://github.com/micro-ROS/rosidl_typesupport.git
-    version: d62781d7912b63c0bbc56c5f4ce9c04d6b4a030c
+    version: 924a1b9d2bd3ee5a6dc80b836761dbd3e47eb612
   ros2/rosidl:
     type: git
     url: https://github.com/ros2/rosidl.git
-    version: 76644923a5ce05e21c78dc629c7952e02f790731
+    version: 3983d007c1cfde197c63002635c7e45177939aec
   ros2/rosidl_dynamic_typesupport:
     type: git
     url: https://github.com/ros2/rosidl_dynamic_typesupport.git
-    version: 9de4742020d772c420ebda0c0cb33d561deae7d9
+    version: f9ee0542b725244ba5633cb3c03d2f9cc0da0064
   ros2/rmw:
     type: git
     url: https://github.com/ros2/rmw.git
-    version: 66807f8eb607a8bd74371fa4256790aa09d76f4e
+    version: 2fd339ba950dc70c2f594e0c3fd69d8a1b217d63
   ros2/rcl_interfaces:
     type: git
     url: https://github.com/ros2/rcl_interfaces.git
-    version: 45871bf69f1e5f281cd8684393b03412fe340aeb
+    version: b90e36e4adf5ed878efa2f365a84798f782618cd
   ros2/rosidl_defaults:
     type: git
     url: https://github.com/ros2/rosidl_defaults.git
-    version: 260080769b0954a131e120f9d60a82e9298c7342
+    version: 1c730458cbee50e2941f67e441e0fd5a3d3c7e6b
   ros2/unique_identifier_msgs:
     type: git
     url: https://github.com/ros2/unique_identifier_msgs.git
-    version: 21bb7a23157e5408db4a46d72dbf29980e6bb206
+    version: b4779af6b3d3c45e710802a0e7f86113da281ae8
   ros2/common_interfaces:
     type: git
     url: https://github.com/ros2/common_interfaces.git
-    version: 7532fccbc3538582c6c1d187c5a809a99d8937df
+    version: 6099c3b82abe20da50bf410e8173127ea1d83d30
   ros2/test_interface_files:
     type: git
     url: https://github.com/ros2/test_interface_files.git
-    version: 248c97013ebd2645048160a16e7297dc03c90996
+    version: a565a8927962e5bcbd5667b884a0f0652568c177
   ros2/rmw_implementation:
     type: git
     url: https://github.com/ros2/rmw_implementation.git
-    version: 1a9b0e672a787af8c3a740d21dece9389d6b77ea
+    version: e241da2fbf75f9f8676751108d18d91115cdbe04
   ros2/rcl_logging:
     type: git
     url: https://github.com/ros2/rcl_logging.git
-    version: ff75b3715fdb5cd48a510bf690acb1ae944a680b
+    version: 904c0971bd0b3581094af853b76b56304915248e
   ros2/ros2_tracing:
     type: git
     url: https://github.com/ros2/ros2_tracing.git
-    version: 888e17f1f93241d942519cb1fa93224cb0ae4b24
+    version: b1aafd79a4ff75a97d62fc23a92a6f16ab123ead
   micro_ros/micro_ros_utilities:
     type: git
     url: https://github.com/micro-ROS/micro_ros_utilities.git
-    version: 62763fb71824d3b27cdc62f23dfb8af2a7290d51
+    version: a4af2545d0a9f5eb4fad03c177c286965c73d9ff
   ros2/rosidl_core:
     type: git
     url: https://github.com/ros2/rosidl_core.git
-    version: 53bb29ee508fec0fddbc20bc793863b8c2f7063a
+    version: 2e34a7cb22db268e2bfac06eb8b47615818051ad
   ros2/rosidl_dds:
     type: git
     url: https://github.com/ros2/rosidl_dds.git
-    version: 7540c3b361b9e75fb3bd36af3ecb112bf22891ff
+    version: 772632eb729ab48f368a0862659224be80caf56b

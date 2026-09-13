@@ -67,28 +67,58 @@ elif ! git -C "${rcutils_source}" apply --reverse --check "${rcutils_patch}" >/d
   exit 2
 fi
 
-# Packages outside the fixed-size C runtime either require unavailable host
-# facilities or add C++/dynamic-loading paths. Keep the exclusions explicit.
-touch \
-  "${TARGET_SRC}/ros2-ros2_tracing/lttngpy/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-ros2_tracing/test_tracetools/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-rclc/rclc_examples/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-common_interfaces/actionlib_msgs/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-common_interfaces/std_srvs/COLCON_IGNORE" \
-  "${TARGET_SRC}/micro_ros-rcl/rcl_yaml_param_parser/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-rcl_logging/rcl_logging_spdlog/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-rcl_interfaces/test_msgs/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-rmw/rmw_security_common/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-rosidl/rosidl_typesupport_introspection_cpp/COLCON_IGNORE"
+rosidl_runtime_source="${TARGET_SRC}/ros2-rosidl"
+rosidl_runtime_patch="${ROS2_ZEPHYR_MODULE_DIR}/patches/rosidl-runtime-c-fixed-profile.patch"
+if [[ -d "${rosidl_runtime_source}/rosidl_buffer" ]]; then
+  if git -C "${rosidl_runtime_source}" apply --check "${rosidl_runtime_patch}" >/dev/null 2>&1; then
+    git -C "${rosidl_runtime_source}" apply "${rosidl_runtime_patch}"
+  elif ! git -C "${rosidl_runtime_source}" apply --reverse --check \
+    "${rosidl_runtime_patch}" >/dev/null 2>&1; then
+    echo "rosidl_runtime_c fixed-profile patch does not apply cleanly" >&2
+    exit 2
+  fi
 
-touch \
-  "${TARGET_SRC}/ros2-rosidl_core/rosidl_core_generators/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-rosidl_core/rosidl_core_runtime/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-rosidl_defaults/rosidl_default_generators/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-rosidl_defaults/rosidl_default_runtime/COLCON_IGNORE" \
-  "${TARGET_SRC}/micro_ros-rosidl_typesupport/rosidl_typesupport_cpp/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-rosidl/rosidl_generator_cpp/COLCON_IGNORE" \
-  "${TARGET_SRC}/ros2-rosidl/rosidl_runtime_cpp/COLCON_IGNORE"
+  rosidl_introspection_patch="${ROS2_ZEPHYR_MODULE_DIR}/patches/rosidl-typesupport-introspection-c-fixed-profile.patch"
+  if git -C "${rosidl_runtime_source}" apply --check \
+    "${rosidl_introspection_patch}" >/dev/null 2>&1; then
+    git -C "${rosidl_runtime_source}" apply "${rosidl_introspection_patch}"
+  elif ! git -C "${rosidl_runtime_source}" apply --reverse --check \
+    "${rosidl_introspection_patch}" >/dev/null 2>&1; then
+    echo "rosidl introspection fixed-profile patch does not apply cleanly" >&2
+    exit 2
+  fi
+fi
+
+# Packages outside the fixed-size C runtime either require unavailable host
+# facilities or add C++/dynamic-loading paths. Keep the exclusions explicit;
+# some repositories remove packages between ROS distributions.
+ignore_package() {
+  local package_path="$1"
+  [[ ! -d "${package_path}" ]] || touch "${package_path}/COLCON_IGNORE"
+}
+
+for package_path in \
+  "${TARGET_SRC}/ros2-ros2_tracing/lttngpy" \
+  "${TARGET_SRC}/ros2-ros2_tracing/test_tracetools" \
+  "${TARGET_SRC}/ros2-rclc/rclc_examples" \
+  "${TARGET_SRC}/ros2-common_interfaces/actionlib_msgs" \
+  "${TARGET_SRC}/ros2-common_interfaces/std_srvs" \
+  "${TARGET_SRC}/micro_ros-rcl/rcl_yaml_param_parser" \
+  "${TARGET_SRC}/ros2-rcl_logging/rcl_logging_implementation" \
+  "${TARGET_SRC}/ros2-rcl_logging/rcl_logging_spdlog" \
+  "${TARGET_SRC}/ros2-rcl_interfaces/test_msgs" \
+  "${TARGET_SRC}/ros2-rmw/rmw_security_common" \
+  "${TARGET_SRC}/ros2-rosidl/rosidl_typesupport_introspection_cpp" \
+  "${TARGET_SRC}/ros2-rosidl/rosidl_buffer" \
+  "${TARGET_SRC}/ros2-rosidl_core/rosidl_core_generators" \
+  "${TARGET_SRC}/ros2-rosidl_core/rosidl_core_runtime" \
+  "${TARGET_SRC}/ros2-rosidl_defaults/rosidl_default_generators" \
+  "${TARGET_SRC}/ros2-rosidl_defaults/rosidl_default_runtime" \
+  "${TARGET_SRC}/micro_ros-rosidl_typesupport/rosidl_typesupport_cpp" \
+  "${TARGET_SRC}/ros2-rosidl/rosidl_generator_cpp" \
+  "${TARGET_SRC}/ros2-rosidl/rosidl_runtime_cpp"; do
+  ignore_package "${package_path}"
+done
 
 set +u
 # The host colcon build generates this file.
@@ -116,6 +146,7 @@ colcon --log-base "${ROS2_ZEPHYR_WORK_ROOT}/log" build \
   --no-warn-unused-cli \
   -DBUILD_SHARED_LIBS=OFF \
   -DROS2_ZEPHYR_STATIC_BUILD=ON \
+  -DROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER=OFF \
   -DBUILD_TESTING=OFF \
   -DCMAKE_BUILD_TYPE=MinSizeRel \
   -DCMAKE_POSITION_INDEPENDENT_CODE=OFF \
@@ -125,6 +156,7 @@ colcon --log-base "${ROS2_ZEPHYR_WORK_ROOT}/log" build \
   -DCycloneDDS_DIR="${ROS2_ZEPHYR_CYCLONE_PREFIX}/lib/cmake/CycloneDDS" \
   -DRMW_IMPLEMENTATION=rmw_cyclonedds_c \
   -DRMW_IMPLEMENTATION_DISABLE_RUNTIME_SELECTION=ON \
+  -DRCL_LOGGING_IMPLEMENTATION=rcl_logging_noop \
   -DROSIDL_TYPESUPPORT_CYCLONEDDS_C_GENERATE_PACKAGES=cyclonedds_c_test_msgs \
   -DRMW_CYCLONEDDS_C_DEFAULT_DOMAIN_ID="${ROS2_ZEPHYR_DOMAIN_ID}" \
   -DRMW_CYCLONEDDS_C_URI="${ROS2_ZEPHYR_CYCLONEDDS_URI}"
