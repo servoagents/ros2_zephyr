@@ -25,11 +25,17 @@ The current release is an early, fixed-profile port:
 - Cyclone DDS uses best-effort, volatile, keep-last QoS;
 - ROS 2 and Cyclone DDS are linked into one static archive.
 
-The sample has passed on an ESP32-S3-DevKitC using ROS 2 Lyrical and Zephyr
-loopback networking. The same test also passes on `native_sim` with Lyrical and
-Kilted. External Wi-Fi discovery and desktop interoperability have not yet been
-accepted. Services, actions, variable-size messages, reliable QoS, DDS
-Security, and a complete remote graph are outside the current profile.
+The loopback sample has passed on an ESP32-S3-DevKitC using ROS 2 Lyrical. The
+same test also passes on `native_sim` with Lyrical and Kilted. On Zephyr 4.4.2,
+the [Wi-Fi sample](samples/wifi/README.md) exchanged `std_msgs/msg/UInt32`
+messages in both directions with an unmodified Lyrical desktop node at 1, 10,
+and 100 Hz. The test used `rclc`, `rcl`, `rmw_cyclonedds_c`, and Cyclone DDS on
+the board, with no Agent.
+
+The repository's pinned Zephyr baseline remains 4.4.0 until a stable 4.4.x
+release contains the timed condition-wait fix. Services, actions,
+variable-size messages, reliable QoS, DDS Security, and a complete remote graph
+are outside the current profile.
 
 ## Prerequisites
 
@@ -83,6 +89,9 @@ scripts/run.sh run-esp32 /dev/ttyUSB0
 The S3 overlay is configured for the tested 32 MiB flash and 16 MiB octal
 PSRAM module. Adjust it before building a board with different memory.
 
+For direct Wi-Fi interoperability with a desktop ROS 2 node, use the separate
+[ESP32-S3 Wi-Fi sample](samples/wifi/README.md).
+
 Builds use one job by default to limit peak memory. Set
 `ROS2_ZEPHYR_BUILD_JOBS` to opt into parallel builds.
 
@@ -113,18 +122,24 @@ builtin proxy endpoints; the earlier 4,864-byte allocation overflowed. The
 loopback sample keeps its smaller measured allocation because it has no
 external peer.
 
-POSIX mutexes are configured by the application. The same external discovery
-test used 159 mutex slots at endpoint match and passed with a 192-slot pool.
-Applications that connect to an external DDS peer should use at least:
+POSIX mutexes are configured by the application. The direct-DDS fixture passed
+with a 192-slot pool, but the complete `rclc` node exhausted that pool while
+processing a stock desktop peer's discovery endpoints. The tested Wi-Fi sample
+uses:
 
 ```text
-CONFIG_MAX_PTHREAD_MUTEX_COUNT=192
+CONFIG_MAX_PTHREAD_MUTEX_COUNT=256
 ```
 
-The loopback sample's 160-slot setting is specific to its local workload. These
-measurements establish resource limits for direct DDS discovery; they do not
-extend the interoperability claims in [Status](#status) to the complete ROS 2
-stack.
+The loopback sample's 160-slot setting is specific to its local workload and is
+not sufficient for external DDS discovery. The Wi-Fi sample keeps 96 condition
+variables; the direct-DDS measurement peaked at 30.
+
+In the accepted Zephyr 4.4.2 builds, the subscriber used 1,016,132 bytes of
+flash and 258,072 of 399,108 available DRAM bytes. Its tracked ROS allocator
+peaked at 917 bytes and its tracked DDS allocator at 98,105 bytes. The
+publisher used 939,508 bytes of flash and 258,064 bytes of DRAM. These figures
+describe this sample and toolchain, not general minimum requirements.
 
 ## Middleware
 

@@ -7,9 +7,10 @@ if(CONFIG_ROS2_ZEPHYR)
 
   include(ExternalProject)
 
-  # Cyclone DDS requests the optional C11 bounds-checking typedefs. Define this before any
-  # application/system header first includes sys/_types.h.
-  zephyr_compile_definitions(__STDC_WANT_LIB_EXT1__=1 _DEFAULT_SOURCE=1)
+  # Cyclone DDS requests the optional C11 bounds-checking typedefs. Keep the feature macros scoped
+  # to the application and external ROS/Cyclone builds: _DEFAULT_SOURCE changes Picolibc's random()
+  # declaration and conflicts with the ESP32 Wi-Fi adapter when applied to all Zephyr sources.
+  target_compile_definitions(app PRIVATE __STDC_WANT_LIB_EXT1__=1 _DEFAULT_SOURCE=1)
 
   set(ROS2_ZEPHYR_DEPS_ROOT
       ""
@@ -63,14 +64,15 @@ if(CONFIG_ROS2_ZEPHYR)
   if(KERNEL_VERSION_MAJOR GREATER_EQUAL 4)
     string(APPEND cyclonedds_zephyr_workarounds " -DCYCLONEDDS_ZEPHYR_EXPLICIT_SCHED=1")
   endif()
+  # The POSIX timed-wait relock fix is not present in the 4.4.0-4.4.2 tags.
   if(KERNEL_VERSION_MAJOR EQUAL 4
      AND KERNEL_VERSION_MINOR EQUAL 4
-     AND KERNEL_PATCHLEVEL EQUAL 0
+     AND KERNEL_PATCHLEVEL LESS_EQUAL 2
   )
     string(APPEND cyclonedds_zephyr_workarounds " -DCYCLONEDDS_ZEPHYR_CONDVAR_TIMEOUT_RELOCK=1")
   endif()
   set(ros2_zephyr_common_definitions
-      "-DCONFIG_MAX_PTHREAD_COUNT=CONFIG_POSIX_THREAD_THREADS_MAX -DCYCLONEDDS_THREAD_COUNT=${CONFIG_ROS2_ZEPHYR_CYCLONEDDS_THREAD_COUNT} -DCYCLONEDDS_THREAD_STACK_SIZE=${CONFIG_ROS2_ZEPHYR_CYCLONEDDS_THREAD_STACK_SIZE}${cyclonedds_zephyr_workarounds} -D_POSIX_C_SOURCE=200809L"
+      "-D__STDC_WANT_LIB_EXT1__=1 -D_DEFAULT_SOURCE=1 -DCONFIG_MAX_PTHREAD_COUNT=CONFIG_POSIX_THREAD_THREADS_MAX -DCYCLONEDDS_THREAD_COUNT=${CONFIG_ROS2_ZEPHYR_CYCLONEDDS_THREAD_COUNT} -DCYCLONEDDS_THREAD_STACK_SIZE=${CONFIG_ROS2_ZEPHYR_CYCLONEDDS_THREAD_STACK_SIZE}${cyclonedds_zephyr_workarounds} -D_POSIX_C_SOURCE=200809L"
   )
   set(ROS2_ZEPHYR_C_FLAGS
       "${zephyr_definitions} ${ros2_zephyr_common_definitions} ${zephyr_system_includes} ${zephyr_includes} ${zephyr_options}"
@@ -219,4 +221,10 @@ if(CONFIG_ROS2_ZEPHYR)
   add_dependencies(ros2_zephyr ros2_zephyr_runtime)
   target_link_libraries(app PUBLIC ros2_zephyr)
   add_dependencies(app ros2_zephyr_runtime)
+
+  # ESP32's Wi-Fi adapter exports random(), while Picolibc's srand() pulls in another random()
+  # definition.  Keep rclc action UUID generation on Zephyr's hardware RNG and avoid the duplicate.
+  if(CONFIG_WIFI_ESP32)
+    target_sources(app PRIVATE "${CMAKE_CURRENT_LIST_DIR}/compat/esp32_wifi_random.c")
+  endif()
 endif()
