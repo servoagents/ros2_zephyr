@@ -83,14 +83,27 @@ python -m pip install \
   vcstool
 west blobs fetch hal_espressif
 
-sdk_complete=1
+sdk_hosttools_complete=1
+if [[ ! -f "${sdk_dir}/cmake/Zephyr-sdkConfig.cmake" ||
+  ! -d "${sdk_dir}/hosttools" ]]; then
+  sdk_hosttools_complete=0
+fi
+
+sdk_complete="${sdk_hosttools_complete}"
 for sdk_toolchain in "${sdk_toolchains[@]}"; do
   if [[ ! -x "${sdk_dir}/gnu/${sdk_toolchain}/bin/${sdk_toolchain}-gcc" ]]; then
     sdk_complete=0
   fi
 done
 
-if [[ "${ROS2_ZEPHYR_SKIP_SDK:-0}" != "1" && "${sdk_complete}" != "1" ]]; then
+if [[ "${ROS2_ZEPHYR_SKIP_SDK:-0}" == "1" ]]; then
+  :
+elif [[ "${ROS2_ZEPHYR_SDK_HOSTTOOLS_ONLY:-0}" == "1" ]]; then
+  if [[ "${sdk_hosttools_complete}" != "1" ]]; then
+    west sdk install --version "${sdk_version}" --install-dir "${sdk_dir}" \
+      --no-gnu-toolchains
+  fi
+elif [[ "${sdk_complete}" != "1" ]]; then
   west sdk install --version "${sdk_version}" --install-dir "${sdk_dir}" \
     --gnu-toolchains "${sdk_toolchains[@]}"
 fi
