@@ -80,6 +80,30 @@ POSIX mutex slots. A 192-slot pool was exhausted while the full ROS node was
 processing a stock desktop peer's discovery endpoints. The loopback sample's
 smaller settings are not suitable for this test.
 
+Stack fill was inspected after successful exchanges in both directions. The
+following figures are high-water marks for this test, not worst-case bounds:
+
+| Thread | Reserved | Device subscriber used | Device publisher used |
+| --- | ---: | ---: | ---: |
+| `recv` | 8,192 B | 3,984 B | 1,792 B |
+| `tev` | 8,192 B | 3,584 B | 3,408 B |
+| `dq.user` | 8,192 B | 528 B | 528 B |
+| `dq.builtins` | 8,192 B | 7,696 B | 7,696 B |
+| `gc` | 8,192 B | 4,096 B | 4,096 B |
+| application `main` | 12,288 B | 11,312 B | 11,264 B |
+
+The complete image had 12 threads and reserved 70,144 stack bytes. The
+`dq.builtins` worker had only 496 bytes unused, so the 8 KiB worker setting
+should not be reduced on the strength of this measurement.
+
+Upstream `rclc` links its action support into the executor library and declares
+`rcl_action` as a required dependency. The executor retains references to that
+code even in this pub/sub-only sample. On ESP32, resolving the action UUID
+helper also pulls Picolibc's `random()` into the link, where it conflicts with
+the ESP32 Wi-Fi adapter's function of the same name. The module therefore
+provides `rand()` and `srand()` only for ESP32 Wi-Fi builds. This compatibility
+shim does not add action support to the current profile.
+
 The current workaround for Zephyr's timed condition-wait relock bug is enabled
 only for the 4.4.0 through 4.4.2 release tags. It should be removed once the
 project moves to a stable Zephyr release containing the upstream fix.

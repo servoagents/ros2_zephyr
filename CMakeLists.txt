@@ -222,8 +222,10 @@ if(CONFIG_ROS2_ZEPHYR)
   target_link_libraries(app PUBLIC ros2_zephyr)
   add_dependencies(app ros2_zephyr_runtime)
 
-  # ESP32's Wi-Fi adapter exports random(), while Picolibc's srand() pulls in another random()
-  # definition.  Keep rclc action UUID generation on Zephyr's hardware RNG and avoid the duplicate.
+  # rclc's executor references its action paths even when an application only uses pub/sub.
+  # Resolving rclc's UUID helper pulls Picolibc's random() into the link, which conflicts with
+  # the ESP32 Wi-Fi adapter's random().  Supply only rand()/srand() and keep this compatibility
+  # shim local to ESP32 Wi-Fi builds.
   if(CONFIG_WIFI_ESP32)
     target_sources(app PRIVATE "${CMAKE_CURRENT_LIST_DIR}/compat/esp32_wifi_random.c")
   endif()
