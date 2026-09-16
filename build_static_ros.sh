@@ -59,13 +59,17 @@ for source_group in micro_ros ros2 servoagents; do
 done
 
 rcutils_source="${TARGET_SRC}/micro_ros-rcutils"
-rcutils_patch="${ROS2_ZEPHYR_MODULE_DIR}/patches/rcutils-zephyr-4.4.patch"
-if git -C "${rcutils_source}" apply --check "${rcutils_patch}" >/dev/null 2>&1; then
-  git -C "${rcutils_source}" apply "${rcutils_patch}"
-elif ! git -C "${rcutils_source}" apply --reverse --check "${rcutils_patch}" >/dev/null 2>&1; then
-  echo "rcutils Zephyr compatibility patch does not apply cleanly" >&2
-  exit 2
-fi
+for rcutils_patch in \
+  "${ROS2_ZEPHYR_MODULE_DIR}/patches/rcutils-zephyr-4.4.patch" \
+  "${ROS2_ZEPHYR_MODULE_DIR}/patches/rcutils-gcc13-atomics.patch"; do
+  if git -C "${rcutils_source}" apply --check "${rcutils_patch}" >/dev/null 2>&1; then
+    git -C "${rcutils_source}" apply "${rcutils_patch}"
+  elif ! git -C "${rcutils_source}" apply --reverse --check \
+    "${rcutils_patch}" >/dev/null 2>&1; then
+    echo "rcutils compatibility patch does not apply cleanly: ${rcutils_patch}" >&2
+    exit 2
+  fi
+done
 
 rosidl_runtime_source="${TARGET_SRC}/ros2-rosidl"
 rosidl_runtime_patch="${ROS2_ZEPHYR_MODULE_DIR}/patches/rosidl-runtime-c-fixed-profile.patch"

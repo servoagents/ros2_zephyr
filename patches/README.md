@@ -1,8 +1,10 @@
 # Dependency patches
 
-`rcutils-zephyr-4.4.patch` is applied while staging the ROS target workspace.
-It targets the `micro-ROS/rcutils` commit pinned in
-the selected distribution's target manifest.
+`rcutils-zephyr-4.4.patch` and `rcutils-gcc13-atomics.patch` are applied while
+staging the ROS target workspace. They target the `micro-ROS/rcutils` commit
+pinned in the selected distribution's target manifest. The latter keeps GCC 13
+and newer on the compiler's native C11 atomics path; those compilers define
+`__has_feature` but are not Clang.
 
 `cyclonedds-zephyr-4.4.patch` is applied by `scripts/setup.sh` to the
 official Cyclone DDS commit pinned in the selected distribution's host
