@@ -105,6 +105,27 @@ the ordinary ROS C sequences and introspection data, but disables native-buffer
 ownership and uses `rcl_logging_noop` instead of the dynamic C++ logging loader.
 Buffer-annotated fields remain unsupported.
 
+### Resource sizing
+
+Embedded builds reserve 8 KiB for each Cyclone DDS worker by default. During a
+direct-DDS ESP32-S3 test, external discovery used about 6 KiB while creating
+builtin proxy endpoints; the earlier 4,864-byte allocation overflowed. The
+loopback sample keeps its smaller measured allocation because it has no
+external peer.
+
+POSIX mutexes are configured by the application. The same external discovery
+test used 159 mutex slots at endpoint match and passed with a 192-slot pool.
+Applications that connect to an external DDS peer should use at least:
+
+```text
+CONFIG_MAX_PTHREAD_MUTEX_COUNT=192
+```
+
+The loopback sample's 160-slot setting is specific to its local workload. These
+measurements establish resource limits for direct DDS discovery; they do not
+extend the interoperability claims in [Status](#status) to the complete ROS 2
+stack.
+
 ## Middleware
 
 The RMW and generated type support live in

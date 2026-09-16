@@ -32,6 +32,10 @@ config ROS2_ZEPHYR_CYCLONEDDS_THREAD_STACK_SIZE
     int "Cyclone DDS worker stack size"
     range 2048 131072
     default 65536 if ARCH_POSIX
-    default 6144
+    default 8192
+    help
+      Stack reserved for each Cyclone DDS worker. The embedded default covers
+      discovery against an external DDS peer on ESP32-S3. Applications with a
+      measured local-only workload may select a smaller value.
 
 endif
