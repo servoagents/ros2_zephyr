@@ -18,17 +18,25 @@ def main() -> int:
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--until", required=True)
+    parser.add_argument(
+        "--no-reset",
+        action="store_true",
+        help="open with DTR deasserted without pulsing EN",
+    )
     args = parser.parse_args()
 
     marker = args.until.encode()
     recent = bytearray()
     deadline = time.monotonic() + args.timeout
 
-    with serial.Serial(args.device, args.baud, timeout=0.2, exclusive=True) as port:
-        # Keep GPIO0 high while pulsing EN; pyserial otherwise opens with DTR
-        # asserted and leaves a classic ESP32 in the ROM bootloader.
-        port.dtr = False
-        hard_reset(port)
+    port = serial.Serial(baudrate=args.baud, timeout=0.2, exclusive=True)
+    # Configure DTR before opening the port. This avoids an assertion pulse on
+    # native USB boards when observing a run started by a power cycle.
+    port.dtr = False
+    port.port = args.device
+    with port:
+        if not args.no_reset:
+            hard_reset(port)
         while time.monotonic() < deadline:
             chunk = port.read(port.in_waiting or 1)
             if not chunk:

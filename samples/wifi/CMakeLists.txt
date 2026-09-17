@@ -9,6 +9,15 @@ if(NOT ROS2_ZEPHYR_WIFI_ROLE STREQUAL "pub" AND
 )
   message(FATAL_ERROR "ROS2_ZEPHYR_WIFI_ROLE must be pub or sub")
 endif()
+set(ROS2_ZEPHYR_WIFI_RELIABILITY "best_effort" CACHE STRING
+    "ESP32 Wi-Fi reliability: best_effort or reliable"
+)
+set_property(CACHE ROS2_ZEPHYR_WIFI_RELIABILITY PROPERTY STRINGS best_effort reliable)
+if(NOT ROS2_ZEPHYR_WIFI_RELIABILITY STREQUAL "best_effort" AND
+   NOT ROS2_ZEPHYR_WIFI_RELIABILITY STREQUAL "reliable"
+)
+  message(FATAL_ERROR "ROS2_ZEPHYR_WIFI_RELIABILITY must be best_effort or reliable")
+endif()
 
 foreach(required_variable WIFI_SSID WIFI_PSK ROS_PEER_IP)
   if("$ENV{${required_variable}}" STREQUAL "")
@@ -48,5 +57,9 @@ project(ros2_zephyr_wifi C CXX)
 
 target_sources(app PRIVATE src/main.c)
 target_include_directories(app PRIVATE "${generated_directory}")
-target_compile_definitions(app PRIVATE ROS2_ZEPHYR_WIFI_ROLE_${ROS2_ZEPHYR_WIFI_ROLE}=1)
+target_compile_definitions(
+  app
+  PRIVATE ROS2_ZEPHYR_WIFI_ROLE_${ROS2_ZEPHYR_WIFI_ROLE}=1
+          ROS2_ZEPHYR_WIFI_RELIABILITY_${ROS2_ZEPHYR_WIFI_RELIABILITY}=1
+)
 target_compile_options(app PRIVATE -Wall -Wextra -Werror)

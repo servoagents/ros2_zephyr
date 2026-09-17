@@ -19,6 +19,17 @@ TARGET_BUILD="${ROS2_ZEPHYR_WORK_ROOT}/build"
 TARGET_INSTALL="${ROS2_ZEPHYR_WORK_ROOT}/install"
 COMBINED="${ROS2_ZEPHYR_WORK_ROOT}/libros2_zephyr.a"
 
+if [[ -n "${ROS2_ZEPHYR_RMW_SOURCE:-}" ]]; then
+  staged_rmw_source="${TARGET_SRC}/servoagents-rmw_cyclonedds_c"
+  mkdir -p "${staged_rmw_source}"
+  command -v rsync >/dev/null || {
+    echo "rsync is required when ROS2_ZEPHYR_RMW_SOURCE is set" >&2
+    exit 1
+  }
+  rsync --archive --delete --delete-excluded --exclude .git --exclude results \
+    "${ROS2_ZEPHYR_RMW_SOURCE}/" "${staged_rmw_source}/"
+fi
+
 # local_setup.sh can exist after an interrupted partial build, so gate on the
 # last host-only CMake package that the target pass needs.
 host_ready="${HOST_INSTALL}/ament_cmake_ros/share/ament_cmake_ros/cmake/ament_cmake_rosConfig.cmake"

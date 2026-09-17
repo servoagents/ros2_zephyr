@@ -4,9 +4,10 @@ This sample runs a normal `rclc` node on an ESP32-S3 and exchanges
 `std_msgs/msg/UInt32` messages with an unmodified ROS 2 desktop node. Cyclone
 DDS communicates directly over Wi-Fi; no Agent is involved.
 
-The test uses best-effort QoS and sends 18 messages: three at 1 Hz, five at
-10 Hz, and ten at 100 Hz. Run both directions by swapping the device and
-desktop roles.
+The test sends 18 messages: three at 1 Hz, five at 10 Hz, and ten at 100 Hz.
+Best effort is the default and preserves the accepted hardware regression;
+Reliable can be selected explicitly. Run both directions by swapping the
+device and desktop roles.
 
 ## Configuration
 
@@ -26,8 +27,14 @@ install -m 600 samples/wifi/wifi.env.example build/wifi.env
 Edit `build/wifi.env`. Do not commit this file or paste its contents into test
 logs. The generated credential header also remains below `build/`.
 
-The supplied board overlay targets an ESP32-S3-DevKitC with 32 MiB flash and
-16 MiB octal PSRAM. Adapt the overlay before using a different module.
+The supplied board files target an ESP32-S3-DevKitC module with 32 MiB octal
+flash and 16 MiB octal PSRAM. Adapt both the devicetree overlay and Kconfig
+fragment before using a different module. The board fragment selects octal STR
+flash mode; DTR calibration does not complete on the tested 32 MiB MXIC part.
+
+After flashing through the native USB Serial/JTAG port, disconnect and
+reconnect board power before running the peer. A USB reset alone did not start
+the application reliably on the tested board.
 
 ## Device subscriber
 
@@ -53,6 +60,16 @@ its ROS and DDS allocations. Because this profile is best-effort, the desktop
 peer sends up to ten recovery samples if the scheduled sweep loses a packet.
 It reports success only after the device endpoint disappears during cleanup.
 
+For Reliable, add the policy to both commands:
+
+```sh
+samples/wifi/run_esp32.sh sub /dev/ttyACM0 reliable
+python3 samples/wifi/peer.py pub --reliability reliable
+```
+
+The Reliable desktop publisher does not send recovery samples. Completion
+therefore depends on DDS retransmission.
+
 ## Device publisher
 
 Start the desktop subscriber before resetting or flashing the board:
@@ -73,6 +90,41 @@ The desktop peer fails unless it receives all 18 expected values. It prints
 arrival intervals for diagnostic use; those intervals are not a network
 latency measurement.
 
+The Reliable form is:
+
+```sh
+python3 samples/wifi/peer.py sub --reliability reliable
+samples/wifi/run_esp32.sh pub /dev/ttyACM0 reliable
+```
+
+## Development middleware source
+
+The dependency manifest points at a committed middleware revision. To
+cross-build uncommitted middleware work from the sibling repository, set:
+
+```sh
+export ROS2_ZEPHYR_RMW_SOURCE="$(realpath ../rmw_cyclonedds_c)"
+samples/wifi/build_esp32.sh sub reliable
+samples/wifi/build_esp32.sh pub reliable
+```
+
+The source is copied into the isolated target workspace without its `.git`
+directory or test results.
+
+## Reliable acceptance status
+
+Best effort has passed on the physical ESP32-S3 in both directions. Reliable
+also passes in both physical directions on Zephyr 4.4.2 against the stock
+Lyrical `rmw_cyclonedds_cpp` peer. The device subscriber accepted the complete
+18-sample schedule; the desktop publisher used no recovery samples. The
+desktop subscriber received all 18 samples from the device publisher.
+
+The accepted Reliable subscriber uses 1,016,916 bytes of flash and 258,088
+bytes of linked DRAM. The publisher uses 940,148 bytes of flash and 258,080
+bytes of linked DRAM. The native USB capture retained the ROM and simple-boot
+output but not the application console after handoff, so these runs do not
+provide allocator or stack high-water marks.
+
 ## Resource profile
 
 The Wi-Fi configuration reserves 8 KiB per Cyclone worker and 256 Zephyr
@@ -80,8 +132,9 @@ POSIX mutex slots. A 192-slot pool was exhausted while the full ROS node was
 processing a stock desktop peer's discovery endpoints. The loopback sample's
 smaller settings are not suitable for this test.
 
-Stack fill was inspected after successful exchanges in both directions. The
-following figures are high-water marks for this test, not worst-case bounds:
+Stack fill was inspected after the accepted Best Effort exchanges in both
+directions. The following figures are high-water marks for that test, not
+worst-case bounds or Reliable measurements:
 
 | Thread | Reserved | Device subscriber used | Device publisher used |
 | --- | ---: | ---: | ---: |

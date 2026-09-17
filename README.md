@@ -22,7 +22,7 @@ The current release is an early, fixed-profile port:
   `esp32s3_devkitc/esp32s3/procpu` are supported build targets;
 - the loopback sample runs through ordinary `rclc` and `rcl` APIs;
 - scalar, fixed-array, and nested fixed-size messages are supported;
-- Cyclone DDS uses best-effort, volatile, keep-last QoS;
+- Cyclone DDS supports best-effort or reliable, volatile, keep-last QoS;
 - ROS 2 and Cyclone DDS are linked into one static archive.
 
 The loopback sample has passed on an ESP32-S3-DevKitC using ROS 2 Lyrical. The
@@ -32,10 +32,16 @@ messages in both directions with an unmodified Lyrical desktop node at 1, 10,
 and 100 Hz. The test used `rclc`, `rcl`, `rmw_cyclonedds_c`, and Cyclone DDS on
 the board, with no Agent.
 
-The repository's pinned Zephyr baseline remains 4.4.0 until a stable 4.4.x
-release contains the timed condition-wait fix. Services, actions,
-variable-size messages, reliable QoS, DDS Security, and a complete remote graph
-are outside the current profile.
+The accepted Wi-Fi result used best-effort QoS. Reliable QoS passes the Linux
+interop and retransmission lanes and cross-builds for both ESP32-S3 roles, but
+has not yet completed physical hardware acceptance. The repository's pinned
+Zephyr baseline remains 4.4.0 until a stable 4.4.x release contains the timed
+condition-wait fix. Services, actions, transient-local durability,
+variable-size messages, DDS Security, and a complete remote graph are outside
+the current profile.
+
+The exact accepted hardware configuration, including its XTypes boundary, is
+recorded in [the Wi-Fi baseline](docs/wifi-baseline.md).
 
 ## Prerequisites
 
@@ -140,6 +146,11 @@ flash and 258,072 of 399,108 available DRAM bytes. Its tracked ROS allocator
 peaked at 917 bytes and its tracked DDS allocator at 98,105 bytes. The
 publisher used 939,508 bytes of flash and 258,064 bytes of DRAM. These figures
 describe this sample and toolchain, not general minimum requirements.
+
+The compile-only Reliable images use 1,016,404 bytes of flash and 258,072
+bytes of linked DRAM for the subscriber, and 939,748 bytes of flash and
+258,064 bytes of linked DRAM for the publisher. Allocator and stack high-water
+marks require a physical Reliable run and are not inferred from the link map.
 
 ## Middleware
 

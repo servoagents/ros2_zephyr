@@ -6,11 +6,16 @@ sample_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd "${sample_dir}/../.." && pwd)"
 ros_distro="${ROS2_ZEPHYR_ROS_DISTRO:-lyrical}"
 role="${1:-sub}"
+reliability="${2:-best_effort}"
 environment_file="${ROS2_ZEPHYR_ENV_FILE:-${repository_root}/build/zephyr-env-${ros_distro}.sh}"
 credentials_file="${ROS2_ZEPHYR_WIFI_ENV_FILE:-${repository_root}/build/wifi.env}"
 
 if [[ "${role}" != "pub" && "${role}" != "sub" ]]; then
-  echo "usage: $0 pub|sub" >&2
+  echo "usage: $0 pub|sub [best_effort|reliable]" >&2
+  exit 2
+fi
+if [[ "${reliability}" != "best_effort" && "${reliability}" != "reliable" ]]; then
+  echo "usage: $0 pub|sub [best_effort|reliable]" >&2
   exit 2
 fi
 if [[ ! -f "${environment_file}" ]]; then
@@ -31,7 +36,7 @@ source "${credentials_file}"
 : "${ROS_PEER_IP:?set ROS_PEER_IP in ${credentials_file}}"
 export WIFI_SSID WIFI_PSK ROS_PEER_IP
 
-build_dir="${ROS2_ZEPHYR_WIFI_BUILD_DIR:-${repository_root}/build/${ros_distro}/wifi-esp32s3-${role}}"
+build_dir="${ROS2_ZEPHYR_WIFI_BUILD_DIR:-${repository_root}/build/${ros_distro}/wifi-esp32s3-${role}-${reliability}}"
 deps_root="${ROS2_ZEPHYR_DEPS_ROOT:-${repository_root}/build/deps/${ros_distro}}"
 export CCACHE_DIR="${repository_root}/build/ccache"
 export CCACHE_TEMPDIR="${repository_root}/build/ccache-tmp"
@@ -52,7 +57,9 @@ ZEPHYR_BASE="${ZEPHYR_BASE}" cmake \
   -DROS2_ZEPHYR_DEPS_ROOT="${deps_root}" \
   -DROS2_ZEPHYR_CYCLONEDDS_SOURCE="${ROS2_ZEPHYR_CYCLONEDDS_SOURCE}" \
   -DROS2_ZEPHYR_HOST_IDLC="${ROS2_ZEPHYR_HOST_IDLC}" \
+  -DROS2_ZEPHYR_RMW_SOURCE="${ROS2_ZEPHYR_RMW_SOURCE:-}" \
   -DROS2_ZEPHYR_WIFI_ROLE="${role}" \
+  -DROS2_ZEPHYR_WIFI_RELIABILITY="${reliability}" \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build "${build_dir}" --parallel "${ROS2_ZEPHYR_BUILD_JOBS:-1}"
 

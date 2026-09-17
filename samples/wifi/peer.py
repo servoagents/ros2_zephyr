@@ -18,12 +18,16 @@ DEVICE_TO_DESKTOP_VALUE = 271828182
 RATE_CASES = ((1, 3), (10, 5), (100, 10))
 
 
-def best_effort_qos() -> QoSProfile:
+def endpoint_qos(reliability: str) -> QoSProfile:
     return QoSProfile(
         depth=32,
         durability=DurabilityPolicy.VOLATILE,
         history=HistoryPolicy.KEEP_LAST,
-        reliability=ReliabilityPolicy.BEST_EFFORT,
+        reliability=(
+            ReliabilityPolicy.RELIABLE
+            if reliability == "reliable"
+            else ReliabilityPolicy.BEST_EFFORT
+        ),
     )
 
 
@@ -36,9 +40,9 @@ def wait_for_subscriber(node, publisher, timeout: float) -> bool:
     return False
 
 
-def run_publisher(node, timeout: float) -> int:
+def run_publisher(node, timeout: float, reliability: str) -> int:
     publisher = node.create_publisher(
-        UInt32, "/ros2_zephyr/desktop_to_device", best_effort_qos()
+        UInt32, "/ros2_zephyr/desktop_to_device", endpoint_qos(reliability)
     )
     started = time.monotonic()
     if not wait_for_subscriber(node, publisher, timeout):
@@ -68,7 +72,7 @@ def run_publisher(node, timeout: float) -> int:
         publisher.get_subscription_count() > 0
         and time.monotonic() < completion_deadline
     ):
-        if recovery_samples < MAX_RECOVERY_SAMPLES:
+        if reliability == "best_effort" and recovery_samples < MAX_RECOVERY_SAMPLES:
             publisher.publish(message)
             recovery_samples += 1
         rclpy.spin_once(node, timeout_sec=0.1)
@@ -82,13 +86,13 @@ def run_publisher(node, timeout: float) -> int:
         return 1
 
     print(
-        f"ROS2_ZEPHYR_PEER_PASS role=pub scheduled={sent} "
+        f"ROS2_ZEPHYR_PEER_PASS role=pub reliability={reliability} scheduled={sent} "
         f"recovery={recovery_samples}"
     )
     return 0
 
 
-def run_subscriber(node, timeout: float) -> int:
+def run_subscriber(node, timeout: float, reliability: str) -> int:
     received_at: list[float] = []
     invalid_value = False
 
@@ -102,7 +106,7 @@ def run_subscriber(node, timeout: float) -> int:
         )
 
     subscription = node.create_subscription(
-        UInt32, "/ros2_zephyr/device_to_desktop", receive, best_effort_qos()
+        UInt32, "/ros2_zephyr/device_to_desktop", receive, endpoint_qos(reliability)
     )
     deadline = time.monotonic() + timeout
     while len(received_at) < EXPECTED_SAMPLES and time.monotonic() < deadline:
@@ -123,7 +127,7 @@ def run_subscriber(node, timeout: float) -> int:
     ]
     intervals = ",".join(f"{interval:.3f}" for interval in intervals_ms)
     print(
-        f"ROS2_ZEPHYR_PEER_PASS role=sub samples={len(received_at)} "
+        f"ROS2_ZEPHYR_PEER_PASS role=sub reliability={reliability} samples={len(received_at)} "
         f"arrival_intervals_ms={intervals}"
     )
     return 0
@@ -133,14 +137,17 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("role", choices=("pub", "sub"), help="desktop peer role")
     parser.add_argument("--timeout", type=float, default=90.0)
+    parser.add_argument(
+        "--reliability", choices=("best_effort", "reliable"), default="best_effort"
+    )
     args = parser.parse_args()
 
     rclpy.init()
     node = rclpy.create_node(f"ros2_zephyr_wifi_peer_{args.role}")
     try:
         if args.role == "pub":
-            return run_publisher(node, args.timeout)
-        return run_subscriber(node, args.timeout)
+            return run_publisher(node, args.timeout, args.reliability)
+        return run_subscriber(node, args.timeout, args.reliability)
     finally:
         node.destroy_node()
         rclpy.shutdown()

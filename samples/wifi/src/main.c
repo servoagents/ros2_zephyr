@@ -13,6 +13,7 @@
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
 #include <rcutils/logging.h>
+#include <rmw/qos_profiles.h>
 #include <std_msgs/msg/detail/u_int32__rosidl_typesupport_introspection_c.h>
 #include <std_msgs/msg/u_int32.h>
 #include <zephyr/kernel.h>
@@ -53,6 +54,24 @@ static struct net_mgmt_event_callback ipv4_callback;
 static bool received_invalid_value;
 static uint32_t received_value;
 static unsigned int received_count;
+
+static rmw_qos_profile_t wifi_qos(void)
+{
+  rmw_qos_profile_t qos = rmw_qos_profile_sensor_data;
+#if defined(ROS2_ZEPHYR_WIFI_RELIABILITY_reliable)
+  qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+#endif
+  return qos;
+}
+
+static const char *wifi_reliability_name(void)
+{
+#if defined(ROS2_ZEPHYR_WIFI_RELIABILITY_reliable)
+  return "reliable";
+#else
+  return "best_effort";
+#endif
+}
 
 static const rosidl_message_type_support_t *uint32_type_support(void)
 {
@@ -310,11 +329,21 @@ static int __attribute__((unused)) run_publisher(rcl_node_t *node)
   };
 
   rcl_publisher_t publisher = rcl_get_zero_initialized_publisher();
-  if (!check(rclc_publisher_init_best_effort(&publisher, node, uint32_type_support(),
-                                             "ros2_zephyr/device_to_desktop"),
+  const rmw_qos_profile_t qos = wifi_qos();
+  if (!check(rclc_publisher_init(&publisher, node, uint32_type_support(),
+                                 "ros2_zephyr/device_to_desktop", &qos),
              "publisher_init")) {
     return 1;
   }
+  const rmw_qos_profile_t *actual_qos = rcl_publisher_get_actual_qos(&publisher);
+  if (actual_qos == NULL || actual_qos->reliability != qos.reliability) {
+    printf("ROS2_ZEPHYR_ERROR operation=publisher_actual_qos\n");
+    if (rcl_publisher_fini(&publisher, node) != RCL_RET_OK) {
+      printf("ROS2_ZEPHYR_ERROR operation=publisher_fini\n");
+    }
+    return 1;
+  }
+  printf("ROS2_ZEPHYR_QOS role=pub reliability=%s\n", wifi_reliability_name());
 
   int result = 1;
   size_t matched = 0U;
@@ -364,11 +393,21 @@ static int __attribute__((unused)) run_subscriber(rcl_node_t *node, rclc_support
   rcl_subscription_t subscription = rcl_get_zero_initialized_subscription();
   rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
   std_msgs__msg__UInt32 message = {0};
-  if (!check(rclc_subscription_init_best_effort(&subscription, node, uint32_type_support(),
-                                                "ros2_zephyr/desktop_to_device"),
+  const rmw_qos_profile_t qos = wifi_qos();
+  if (!check(rclc_subscription_init(&subscription, node, uint32_type_support(),
+                                    "ros2_zephyr/desktop_to_device", &qos),
              "subscription_init")) {
     return 1;
   }
+  const rmw_qos_profile_t *actual_qos = rcl_subscription_get_actual_qos(&subscription);
+  if (actual_qos == NULL || actual_qos->reliability != qos.reliability) {
+    printf("ROS2_ZEPHYR_ERROR operation=subscription_actual_qos\n");
+    if (rcl_subscription_fini(&subscription, node) != RCL_RET_OK) {
+      printf("ROS2_ZEPHYR_ERROR operation=subscription_fini\n");
+    }
+    return 1;
+  }
+  printf("ROS2_ZEPHYR_QOS role=sub reliability=%s\n", wifi_reliability_name());
 
   int result = 1;
   bool executor_initialized = false;
@@ -431,8 +470,9 @@ int main(void)
 #else
   const char *role = "sub";
 #endif
-  printf("ROS2_ZEPHYR_START board=%s role=%s path=rclc-rcl-rmw_cyclonedds_c-cyclonedds\n",
-         CONFIG_BOARD_TARGET, role);
+  printf("ROS2_ZEPHYR_START board=%s role=%s reliability=%s "
+         "path=rclc-rcl-rmw_cyclonedds_c-cyclonedds\n",
+         CONFIG_BOARD_TARGET, role, wifi_reliability_name());
   if (!connect_wifi()) {
     return 1;
   }

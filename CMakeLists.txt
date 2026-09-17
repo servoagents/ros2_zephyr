@@ -24,6 +24,10 @@ if(CONFIG_ROS2_ZEPHYR)
       ""
       CACHE FILEPATH "Host idlc executable"
   )
+  set(ROS2_ZEPHYR_RMW_SOURCE
+      ""
+      CACHE PATH "Optional local rmw_cyclonedds_c source for development builds"
+  )
   set(ros2_zephyr_default_cyclonedds_uri
       "<CycloneDDS><Domain><General><AllowMulticast>false</AllowMulticast><MaxMessageSize>1400B</MaxMessageSize></General><Sizing><ReceiveBufferSize>8KiB</ReceiveBufferSize><ReceiveBufferChunkSize>4KiB</ReceiveBufferChunkSize></Sizing><Discovery><ParticipantIndex>0</ParticipantIndex><MaxAutoParticipantIndex>0</MaxAutoParticipantIndex><Peers><Peer Address=\"127.0.0.1\"/></Peers></Discovery><Internal><MultipleReceiveThreads>false</MultipleReceiveThreads></Internal></Domain></CycloneDDS>"
   )
@@ -49,6 +53,11 @@ if(CONFIG_ROS2_ZEPHYR)
   endforeach()
   if(NOT EXISTS "${ROS2_ZEPHYR_HOST_IDLC}")
     message(FATAL_ERROR "ROS2_ZEPHYR_HOST_IDLC must name the host idlc executable")
+  endif()
+  if(NOT "${ROS2_ZEPHYR_RMW_SOURCE}" STREQUAL "" AND
+     NOT IS_DIRECTORY "${ROS2_ZEPHYR_RMW_SOURCE}/rmw_cyclonedds_c"
+  )
+    message(FATAL_ERROR "ROS2_ZEPHYR_RMW_SOURCE must name an rmw_cyclonedds_c repository")
   endif()
 
   zephyr_get_system_include_directories_for_lang_as_string(C zephyr_system_includes)
@@ -191,6 +200,7 @@ if(CONFIG_ROS2_ZEPHYR)
       "ROS2_ZEPHYR_CYCLONE_PREFIX=${cyclonedds_install}"
       "ROS2_ZEPHYR_HOST_IDLC=${ROS2_ZEPHYR_HOST_IDLC}" "ROS2_ZEPHYR_AR=${CMAKE_AR}"
       "ROS2_ZEPHYR_RANLIB=${CMAKE_RANLIB}" "ROS2_ZEPHYR_DOMAIN_ID=${CONFIG_ROS2_ZEPHYR_DOMAIN_ID}"
+      "ROS2_ZEPHYR_RMW_SOURCE=${ROS2_ZEPHYR_RMW_SOURCE}"
       "ROS2_ZEPHYR_CYCLONEDDS_URI=${ros2_zephyr_cyclonedds_uri}" bash
       "${CMAKE_CURRENT_LIST_DIR}/build_static_ros.sh"
     INSTALL_COMMAND ""
