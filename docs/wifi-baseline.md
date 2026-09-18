@@ -4,6 +4,8 @@ The accepted physical baseline exchanged `std_msgs/msg/UInt32` samples in
 both directions at 1, 10, and 100 Hz. The original run used best-effort,
 volatile, keep-last QoS. Reliable, volatile, keep-last has since passed on the
 same ESP32-S3 in both directions against the stock Lyrical desktop RMW.
+Reliable, transient-local, keep-last has also passed in both directions with
+depths 1 and 3.
 
 | Component | Accepted value |
 | --- | --- |
@@ -52,7 +54,27 @@ figures in the sample README remain the earlier Best Effort baseline.
 
 The tested 32 MiB MXIC flash requires octal STR mode. DTR calibration did not
 complete, and a USB reset after flashing did not reliably start the
-application; the accepted runs began after a physical power cycle.
+application; those Reliable Volatile runs began after a physical power cycle.
+
+## Transient Local acceptance
+
+The Transient Local run used Reliable delivery, finite keep-last histories,
+and the same domain and stock Lyrical desktop RMW. Each publisher wrote values
+1 through 5 before the late subscriber existed, retained the requested tail,
+then wrote live value 6 after discovery.
+
+Both physical directions passed at depths 1 and 3. The late subscribers
+received exactly `5, 6` at depth 1 and `3, 4, 5, 6` at depth 3. For the board
+publisher direction, the desktop participant first discovered the publisher
+through the ROS graph and created its subscription only afterward. This made
+the late-join boundary independent of the unavailable native USB application
+console.
+
+The accepted subscriber images used 1,017,940 bytes of flash and 258,088
+bytes of linked DRAM at both depths. The publisher images used 940,916 bytes
+of flash and 258,080 bytes of linked DRAM. As with the Reliable Volatile run,
+native USB did not expose the application console after handoff. These runs
+therefore add wire acceptance, but no allocator or stack high-water figures.
 
 ## XTypes boundary
 
@@ -73,13 +95,15 @@ interoperability.
 The Wi-Fi scripts default to best effort. Run the two accepted directions with:
 
 ```sh
-samples/wifi/run_esp32.sh sub /dev/ttyACM0 best_effort
+samples/wifi/run_esp32.sh --role sub --device /dev/ttyACM0 \
+  --reliability best_effort --durability volatile
 python3 samples/wifi/peer.py pub --reliability best_effort
 ```
 
 ```sh
 python3 samples/wifi/peer.py sub --reliability best_effort
-samples/wifi/run_esp32.sh pub /dev/ttyACM0 best_effort
+samples/wifi/run_esp32.sh --role pub --device /dev/ttyACM0 \
+  --reliability best_effort --durability volatile
 ```
 
 The public setup remains pinned to Zephyr 4.4.0. Reproducing the accepted

@@ -31,6 +31,8 @@ enum {
   EXPECTED_SAMPLE_COUNT = 18,
   DESKTOP_TO_DEVICE_VALUE = 314159265U,
   DEVICE_TO_DESKTOP_VALUE = 271828182U,
+  TRANSIENT_HISTORY_LAST_VALUE = 5U,
+  TRANSIENT_LIVE_VALUE = 6U,
 };
 
 typedef struct allocation_header_s {
@@ -58,8 +60,12 @@ static unsigned int received_count;
 static rmw_qos_profile_t wifi_qos(void)
 {
   rmw_qos_profile_t qos = rmw_qos_profile_sensor_data;
+  qos.depth = ROS2_ZEPHYR_WIFI_DEPTH;
 #if defined(ROS2_ZEPHYR_WIFI_RELIABILITY_reliable)
   qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+#endif
+#if defined(ROS2_ZEPHYR_WIFI_DURABILITY_transient_local)
+  qos.durability = RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;
 #endif
   return qos;
 }
@@ -70,6 +76,35 @@ static const char *wifi_reliability_name(void)
   return "reliable";
 #else
   return "best_effort";
+#endif
+}
+
+static const char *wifi_durability_name(void)
+{
+#if defined(ROS2_ZEPHYR_WIFI_DURABILITY_transient_local)
+  return "transient_local";
+#else
+  return "volatile";
+#endif
+}
+
+static bool wifi_actual_qos_matches(const rmw_qos_profile_t *actual,
+                                    const rmw_qos_profile_t *requested)
+{
+  return actual != NULL && actual->history == RMW_QOS_POLICY_HISTORY_KEEP_LAST &&
+         actual->depth == requested->depth && actual->reliability == requested->reliability &&
+         actual->durability == requested->durability;
+}
+
+static unsigned int expected_receive_count(void)
+{
+#if defined(ROS2_ZEPHYR_WIFI_DURABILITY_transient_local)
+  const unsigned int retained = ROS2_ZEPHYR_WIFI_DEPTH < TRANSIENT_HISTORY_LAST_VALUE
+                                    ? ROS2_ZEPHYR_WIFI_DEPTH
+                                    : TRANSIENT_HISTORY_LAST_VALUE;
+  return retained + 1U;
+#else
+  return EXPECTED_SAMPLE_COUNT;
 #endif
 }
 
@@ -306,9 +341,17 @@ static void subscription_callback(const void *message)
 {
   const std_msgs__msg__UInt32 *sample = message;
   if (sample != NULL) {
+#if defined(ROS2_ZEPHYR_WIFI_DURABILITY_transient_local)
+    const unsigned int retained = ROS2_ZEPHYR_WIFI_DEPTH < TRANSIENT_HISTORY_LAST_VALUE
+                                      ? ROS2_ZEPHYR_WIFI_DEPTH
+                                      : TRANSIENT_HISTORY_LAST_VALUE;
+    const uint32_t expected = TRANSIENT_LIVE_VALUE - retained + received_count;
+#else
+    const uint32_t expected = DESKTOP_TO_DEVICE_VALUE;
+#endif
     received_value = sample->data;
     received_count++;
-    if (sample->data != DESKTOP_TO_DEVICE_VALUE) {
+    if (sample->data != expected) {
       received_invalid_value = true;
     }
     printf("ROS2_ZEPHYR_RECEIVED direction=desktop_to_device value=%" PRIu32 " sequence=%u\n",
@@ -318,6 +361,7 @@ static void subscription_callback(const void *message)
 
 static int __attribute__((unused)) run_publisher(rcl_node_t *node)
 {
+#if !defined(ROS2_ZEPHYR_WIFI_DURABILITY_transient_local)
   static const struct {
     unsigned int rate_hz;
     unsigned int interval_ms;
@@ -327,6 +371,7 @@ static int __attribute__((unused)) run_publisher(rcl_node_t *node)
       {10U, 100U, 5U},
       {100U, 10U, 10U},
   };
+#endif
 
   rcl_publisher_t publisher = rcl_get_zero_initialized_publisher();
   const rmw_qos_profile_t qos = wifi_qos();
@@ -336,16 +381,28 @@ static int __attribute__((unused)) run_publisher(rcl_node_t *node)
     return 1;
   }
   const rmw_qos_profile_t *actual_qos = rcl_publisher_get_actual_qos(&publisher);
-  if (actual_qos == NULL || actual_qos->reliability != qos.reliability) {
+  if (!wifi_actual_qos_matches(actual_qos, &qos)) {
     printf("ROS2_ZEPHYR_ERROR operation=publisher_actual_qos\n");
     if (rcl_publisher_fini(&publisher, node) != RCL_RET_OK) {
       printf("ROS2_ZEPHYR_ERROR operation=publisher_fini\n");
     }
     return 1;
   }
-  printf("ROS2_ZEPHYR_QOS role=pub reliability=%s\n", wifi_reliability_name());
+  printf("ROS2_ZEPHYR_QOS role=pub reliability=%s durability=%s depth=%zu\n",
+         wifi_reliability_name(), wifi_durability_name(), qos.depth);
 
   int result = 1;
+#if defined(ROS2_ZEPHYR_WIFI_DURABILITY_transient_local)
+  for (uint32_t value = 1U; value <= TRANSIENT_HISTORY_LAST_VALUE; ++value) {
+    const std_msgs__msg__UInt32 historical = {.data = value};
+    if (!check(rcl_publish(&publisher, &historical, NULL), "publish_history")) {
+      goto cleanup;
+    }
+    printf("ROS2_ZEPHYR_SENT phase=history value=%" PRIu32 "\n", value);
+  }
+  printf("ROS2_ZEPHYR_HISTORY_READY role=pub depth=%zu history_last=%u\n", qos.depth,
+         TRANSIENT_HISTORY_LAST_VALUE);
+#endif
   size_t matched = 0U;
   const int64_t discovery_start = k_uptime_get();
   printf("ROS2_ZEPHYR_READY role=pub domain=%d\n", CONFIG_ROS2_ZEPHYR_DOMAIN_ID);
@@ -364,6 +421,13 @@ static int __attribute__((unused)) run_publisher(rcl_node_t *node)
   printf("ROS2_ZEPHYR_MATCH role=pub peers=%zu discovery_ms=%" PRId64 "\n", matched,
          k_uptime_get() - discovery_start);
   k_sleep(K_MSEC(500));
+#if defined(ROS2_ZEPHYR_WIFI_DURABILITY_transient_local)
+  const std_msgs__msg__UInt32 live_message = {.data = TRANSIENT_LIVE_VALUE};
+  if (!check(rcl_publish(&publisher, &live_message, NULL), "publish_live")) {
+    goto cleanup;
+  }
+  printf("ROS2_ZEPHYR_SENT phase=live value=%u\n", TRANSIENT_LIVE_VALUE);
+#else
   const std_msgs__msg__UInt32 message = {.data = DEVICE_TO_DESKTOP_VALUE};
   for (size_t rate_index = 0U; rate_index < ARRAY_SIZE(rate_cases); ++rate_index) {
     for (unsigned int sequence = 1U; sequence <= rate_cases[rate_index].samples; ++sequence) {
@@ -378,6 +442,7 @@ static int __attribute__((unused)) run_publisher(rcl_node_t *node)
       k_sleep(K_MSEC(rate_cases[rate_index].interval_ms));
     }
   }
+#endif
   result = 0;
 
 cleanup:
@@ -400,14 +465,15 @@ static int __attribute__((unused)) run_subscriber(rcl_node_t *node, rclc_support
     return 1;
   }
   const rmw_qos_profile_t *actual_qos = rcl_subscription_get_actual_qos(&subscription);
-  if (actual_qos == NULL || actual_qos->reliability != qos.reliability) {
+  if (!wifi_actual_qos_matches(actual_qos, &qos)) {
     printf("ROS2_ZEPHYR_ERROR operation=subscription_actual_qos\n");
     if (rcl_subscription_fini(&subscription, node) != RCL_RET_OK) {
       printf("ROS2_ZEPHYR_ERROR operation=subscription_fini\n");
     }
     return 1;
   }
-  printf("ROS2_ZEPHYR_QOS role=sub reliability=%s\n", wifi_reliability_name());
+  printf("ROS2_ZEPHYR_QOS role=sub reliability=%s durability=%s depth=%zu\n",
+         wifi_reliability_name(), wifi_durability_name(), qos.depth);
 
   int result = 1;
   bool executor_initialized = false;
@@ -426,7 +492,7 @@ static int __attribute__((unused)) run_subscriber(rcl_node_t *node, rclc_support
   const int64_t discovery_start = k_uptime_get();
   int64_t receive_deadline = discovery_start + MATCH_TIMEOUT_MS;
   printf("ROS2_ZEPHYR_READY role=sub domain=%d\n", CONFIG_ROS2_ZEPHYR_DOMAIN_ID);
-  while (k_uptime_get() < receive_deadline && received_count < EXPECTED_SAMPLE_COUNT) {
+  while (k_uptime_get() < receive_deadline && received_count < expected_receive_count()) {
     const rcl_ret_t spin_result = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(20));
     if (spin_result != RCL_RET_OK && spin_result != RCL_RET_TIMEOUT) {
       check(spin_result, "spin_some");
@@ -446,7 +512,7 @@ static int __attribute__((unused)) run_subscriber(rcl_node_t *node, rclc_support
     }
   }
 
-  if (received_count != EXPECTED_SAMPLE_COUNT || received_invalid_value) {
+  if (received_count != expected_receive_count() || received_invalid_value) {
     printf("ROS2_ZEPHYR_ERROR operation=receive_timeout value=%" PRIu32 " count=%u invalid=%d\n",
            received_value, received_count, received_invalid_value);
     goto cleanup;
@@ -470,9 +536,10 @@ int main(void)
 #else
   const char *role = "sub";
 #endif
-  printf("ROS2_ZEPHYR_START board=%s role=%s reliability=%s "
+  printf("ROS2_ZEPHYR_START board=%s role=%s reliability=%s durability=%s depth=%u "
          "path=rclc-rcl-rmw_cyclonedds_c-cyclonedds\n",
-         CONFIG_BOARD_TARGET, role, wifi_reliability_name());
+         CONFIG_BOARD_TARGET, role, wifi_reliability_name(), wifi_durability_name(),
+         ROS2_ZEPHYR_WIFI_DEPTH);
   if (!connect_wifi()) {
     return 1;
   }

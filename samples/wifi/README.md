@@ -42,7 +42,7 @@ Build and flash the subscriber through either the UART bridge or the native
 USB Serial/JTAG port. Use the device name that appears on the host:
 
 ```sh
-samples/wifi/run_esp32.sh sub /dev/ttyACM0
+samples/wifi/run_esp32.sh --role sub --device /dev/ttyACM0
 ```
 
 The UART bridge commonly appears as `/dev/ttyUSB0`.
@@ -63,7 +63,7 @@ It reports success only after the device endpoint disappears during cleanup.
 For Reliable, add the policy to both commands:
 
 ```sh
-samples/wifi/run_esp32.sh sub /dev/ttyACM0 reliable
+samples/wifi/run_esp32.sh --role sub --device /dev/ttyACM0 --reliability reliable
 python3 samples/wifi/peer.py pub --reliability reliable
 ```
 
@@ -83,7 +83,7 @@ python3 samples/wifi/peer.py sub
 Then build and flash the publisher in another shell:
 
 ```sh
-samples/wifi/run_esp32.sh pub /dev/ttyACM0
+samples/wifi/run_esp32.sh --role pub --device /dev/ttyACM0
 ```
 
 The desktop peer fails unless it receives all 18 expected values. It prints
@@ -94,7 +94,7 @@ The Reliable form is:
 
 ```sh
 python3 samples/wifi/peer.py sub --reliability reliable
-samples/wifi/run_esp32.sh pub /dev/ttyACM0 reliable
+samples/wifi/run_esp32.sh --role pub --device /dev/ttyACM0 --reliability reliable
 ```
 
 ## Development middleware source
@@ -104,8 +104,8 @@ cross-build uncommitted middleware work from the sibling repository, set:
 
 ```sh
 export ROS2_ZEPHYR_RMW_SOURCE="$(realpath ../rmw_cyclonedds_c)"
-samples/wifi/build_esp32.sh sub reliable
-samples/wifi/build_esp32.sh pub reliable
+samples/wifi/build_esp32.sh --role sub --reliability reliable
+samples/wifi/build_esp32.sh --role pub --reliability reliable
 ```
 
 The source is copied into the isolated target workspace without its `.git`
@@ -124,6 +124,68 @@ bytes of linked DRAM. The publisher uses 940,148 bytes of flash and 258,080
 bytes of linked DRAM. The native USB capture retained the ROM and simple-boot
 output but not the application console after handoff, so these runs do not
 provide allocator or stack high-water marks.
+
+## Transient Local late joiners
+
+Transient Local uses an explicit finite keep-last depth. The publisher writes
+values 1 through 5 before the subscriber exists, remains alive, and writes the
+live value 6 after discovery. A depth-3 late subscriber must therefore receive
+`3, 4, 5, 6` in that order; depth 1 must receive `5, 6`.
+
+For the board as late subscriber, build the image before starting the desktop
+publisher so compilation does not consume the peer's discovery timeout. Wait
+for its `ROS2_ZEPHYR_PEER_HISTORY_READY` marker, then flash without rebuilding:
+
+```sh
+samples/wifi/build_esp32.sh --role sub --reliability reliable \
+  --durability transient_local --depth 3
+```
+
+Start the publisher in the ROS 2 shell:
+
+```sh
+python3 samples/wifi/peer.py pub --reliability reliable \
+  --durability transient_local --depth 3
+```
+
+After the history-ready marker, flash from another shell:
+
+```sh
+samples/wifi/run_esp32.sh --role sub --device /dev/ttyACM0 \
+  --reliability reliable --durability transient_local --depth 3 --no-build
+```
+
+For the board as publisher, build and flash it first:
+
+```sh
+samples/wifi/build_esp32.sh --role pub --reliability reliable \
+  --durability transient_local --depth 3
+samples/wifi/run_esp32.sh --role pub --device /dev/ttyACM0 --no-build \
+  --reliability reliable --durability transient_local --depth 3
+```
+
+Then start the desktop subscriber. For Transient Local, the peer waits until
+the board publisher appears in the ROS graph before it creates its
+subscription. The board can therefore publish its retained history while the
+desktop participant assists discovery without accidentally creating an early
+reader.
+
+```sh
+python3 samples/wifi/peer.py sub --reliability reliable \
+  --durability transient_local --depth 3
+```
+
+Transient Local passes on the physical ESP32-S3 in both directions at depths
+1 and 3 against the stock Lyrical `rmw_cyclonedds_cpp` peer. At depth 1 the
+late subscribers received `5, 6`; at depth 3 they received `3, 4, 5, 6`.
+The stock publishers sent the live sample only after matching the board, and
+the board subscribers completed and removed their endpoints.
+
+The accepted depth-1 and depth-3 subscriber images use 1,017,940 bytes of
+flash and 258,088 bytes of linked DRAM. The publisher images use 940,916 bytes
+of flash and 258,080 bytes of linked DRAM. Native USB again did not expose the
+application console after handoff, so these runs establish wire behavior but
+do not add Transient Local allocator or stack high-water measurements.
 
 ## Resource profile
 

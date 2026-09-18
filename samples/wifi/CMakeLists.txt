@@ -18,6 +18,22 @@ if(NOT ROS2_ZEPHYR_WIFI_RELIABILITY STREQUAL "best_effort" AND
 )
   message(FATAL_ERROR "ROS2_ZEPHYR_WIFI_RELIABILITY must be best_effort or reliable")
 endif()
+set(ROS2_ZEPHYR_WIFI_DURABILITY "volatile" CACHE STRING
+    "ESP32 Wi-Fi durability: volatile or transient_local"
+)
+set_property(CACHE ROS2_ZEPHYR_WIFI_DURABILITY PROPERTY STRINGS volatile transient_local)
+if(NOT ROS2_ZEPHYR_WIFI_DURABILITY STREQUAL "volatile" AND
+   NOT ROS2_ZEPHYR_WIFI_DURABILITY STREQUAL "transient_local"
+)
+  message(FATAL_ERROR "ROS2_ZEPHYR_WIFI_DURABILITY must be volatile or transient_local")
+endif()
+set(ROS2_ZEPHYR_WIFI_DEPTH "5" CACHE STRING "ESP32 Wi-Fi keep-last history depth")
+if(NOT ROS2_ZEPHYR_WIFI_DEPTH MATCHES "^[1-9][0-9]*$")
+  message(FATAL_ERROR "ROS2_ZEPHYR_WIFI_DEPTH must be a positive integer")
+endif()
+if(ROS2_ZEPHYR_WIFI_DEPTH GREATER 2147483647)
+  message(FATAL_ERROR "ROS2_ZEPHYR_WIFI_DEPTH must not exceed 2147483647")
+endif()
 
 foreach(required_variable WIFI_SSID WIFI_PSK ROS_PEER_IP)
   if("$ENV{${required_variable}}" STREQUAL "")
@@ -61,5 +77,7 @@ target_compile_definitions(
   app
   PRIVATE ROS2_ZEPHYR_WIFI_ROLE_${ROS2_ZEPHYR_WIFI_ROLE}=1
           ROS2_ZEPHYR_WIFI_RELIABILITY_${ROS2_ZEPHYR_WIFI_RELIABILITY}=1
+          ROS2_ZEPHYR_WIFI_DURABILITY_${ROS2_ZEPHYR_WIFI_DURABILITY}=1
+          ROS2_ZEPHYR_WIFI_DEPTH=${ROS2_ZEPHYR_WIFI_DEPTH}
 )
 target_compile_options(app PRIVATE -Wall -Wextra -Werror)
