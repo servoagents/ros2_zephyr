@@ -222,3 +222,24 @@ shim does not add action support to the current profile.
 The current workaround for Zephyr's timed condition-wait relock bug is enabled
 only for the 4.4.0 through 4.4.2 release tags. It should be removed once the
 project moves to a stable Zephyr release containing the upstream fix.
+
+## ROS graph acceptance
+
+The same sample also has `node` and `pubsub` roles for ESP32-S3 graph
+acceptance. The `pubsub` role exposes endpoint creation and removal to a stock
+desktop graph. The `node` role validates remote names, namespaces, topic
+types, endpoint counts, deletion, participant loss, and restart through RCL
+graph APIs on the board.
+
+Build the four topology images with:
+
+```sh
+export ROS2_ZEPHYR_RMW_SOURCE="$(realpath ../rmw_cyclonedds_c)"
+samples/wifi/build_graph_matrix.sh
+```
+
+The physical commands, pass markers, configurable cache limits, and resource
+capture requirements are documented in
+[the ESP32-S3 graph acceptance note](../../docs/graph-acceptance.md). Hardware
+results are not claimed until those physical lanes and the QoS regression
+matrix have been captured.

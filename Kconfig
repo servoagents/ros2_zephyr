@@ -38,4 +38,32 @@ config ROS2_ZEPHYR_CYCLONEDDS_THREAD_STACK_SIZE
       discovery against an external DDS peer on ESP32-S3. Applications with a
       measured local-only workload may select a smaller value.
 
+config ROS2_ZEPHYR_GRAPH_MAX_LOCAL_NODES
+    int "Maximum local nodes in one ROS graph announcement"
+    range 1 16
+    default 4
+
+config ROS2_ZEPHYR_GRAPH_MAX_ENDPOINTS_PER_NODE
+    int "Maximum graph endpoints associated with one node"
+    range 1 32
+    default 8
+
+config ROS2_ZEPHYR_GRAPH_CACHE_MAX_PARTICIPANTS
+    int "Maximum participants in the inbound ROS graph cache"
+    range 1 16
+    default 4
+
+config ROS2_ZEPHYR_GRAPH_CACHE_MAX_NODES
+    int "Maximum nodes in the inbound ROS graph cache"
+    range 1 32
+    default 8
+
+config ROS2_ZEPHYR_GRAPH_CACHE_MAX_ENDPOINTS
+    int "Maximum DDS endpoints in the inbound ROS graph cache"
+    range 1 64
+    default 24
+    help
+      DDS endpoints are retained before their ROS graph association arrives,
+      so this limit must also cover temporarily unassociated endpoints.
+
 endif

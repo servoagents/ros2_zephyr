@@ -2,12 +2,14 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
-set(ROS2_ZEPHYR_WIFI_ROLE "sub" CACHE STRING "ESP32 Wi-Fi role: pub or sub")
-set_property(CACHE ROS2_ZEPHYR_WIFI_ROLE PROPERTY STRINGS pub sub)
-if(NOT ROS2_ZEPHYR_WIFI_ROLE STREQUAL "pub" AND
-   NOT ROS2_ZEPHYR_WIFI_ROLE STREQUAL "sub"
+set(ROS2_ZEPHYR_WIFI_ROLE "sub" CACHE STRING "ESP32 Wi-Fi role: node, pub, sub, or pubsub")
+set_property(CACHE ROS2_ZEPHYR_WIFI_ROLE PROPERTY STRINGS node pub sub pubsub)
+if(NOT ROS2_ZEPHYR_WIFI_ROLE STREQUAL "node" AND
+   NOT ROS2_ZEPHYR_WIFI_ROLE STREQUAL "pub" AND
+   NOT ROS2_ZEPHYR_WIFI_ROLE STREQUAL "sub" AND
+   NOT ROS2_ZEPHYR_WIFI_ROLE STREQUAL "pubsub"
 )
-  message(FATAL_ERROR "ROS2_ZEPHYR_WIFI_ROLE must be pub or sub")
+  message(FATAL_ERROR "ROS2_ZEPHYR_WIFI_ROLE must be node, pub, sub, or pubsub")
 endif()
 set(ROS2_ZEPHYR_WIFI_RELIABILITY "best_effort" CACHE STRING
     "ESP32 Wi-Fi reliability: best_effort or reliable"

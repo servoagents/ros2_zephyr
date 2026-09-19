@@ -14,7 +14,7 @@ build_image=true
 environment_file="${ROS2_ZEPHYR_ENV_FILE:-${repository_root}/build/zephyr-env-${ros_distro}.sh}"
 
 usage() {
-  echo "usage: $0 [--role pub|sub] [--device PATH]" \
+  echo "usage: $0 [--role node|pub|sub|pubsub] [--device PATH]" \
     "[--reliability best_effort|reliable]" \
     "[--durability volatile|transient_local] [--depth N] [--no-build]" >&2
 }
@@ -61,7 +61,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "${role}" != "pub" && "${role}" != "sub" ]]; then
+if [[ "${role}" != "node" && "${role}" != "pub" && "${role}" != "sub" &&
+      "${role}" != "pubsub" ]]; then
   usage
   exit 2
 fi

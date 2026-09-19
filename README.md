@@ -22,7 +22,10 @@ The current release is an early, fixed-profile port:
   `esp32s3_devkitc/esp32s3/procpu` are supported build targets;
 - the loopback sample runs through ordinary `rclc` and `rcl` APIs;
 - scalar, fixed-array, and nested fixed-size messages are supported;
-- Cyclone DDS supports best-effort or reliable, volatile, keep-last QoS;
+- Cyclone DDS supports best-effort or reliable, volatile or transient-local,
+  finite keep-last QoS;
+- bounded outbound and inbound ROS graph state is available in the development
+  middleware profile;
 - ROS 2 and Cyclone DDS are linked into one static archive.
 
 The loopback sample has passed on an ESP32-S3-DevKitC using ROS 2 Lyrical. The
@@ -32,16 +35,19 @@ messages in both directions with an unmodified Lyrical desktop node at 1, 10,
 and 100 Hz. The test used `rclc`, `rcl`, `rmw_cyclonedds_c`, and Cyclone DDS on
 the board, with no Agent.
 
-The accepted Wi-Fi result used best-effort QoS. Reliable QoS passes the Linux
-interop and retransmission lanes and cross-builds for both ESP32-S3 roles, but
-has not yet completed physical hardware acceptance. The repository's pinned
-Zephyr baseline remains 4.4.0 until a stable 4.4.x release contains the timed
-condition-wait fix. Services, actions, transient-local durability,
-variable-size messages, DDS Security, and a complete remote graph are outside
-the current profile.
+Best Effort/Volatile, Reliable/Volatile, and Reliable/Transient Local depths 1
+and 3 have passed in both physical directions. The bounded graph implementation
+passes its Linux interoperability lanes and cross-builds for ESP32-S3; its
+physical graph acceptance remains pending. The repository's pinned Zephyr
+baseline remains 4.4.0 until a stable 4.4.x release contains the timed
+condition-wait fix. Services, actions, generic variable-size application
+messages, DDS Security, and extended graph APIs remain outside the current
+profile.
 
 The exact accepted hardware configuration, including its XTypes boundary, is
 recorded in [the Wi-Fi baseline](docs/wifi-baseline.md).
+The graph hardware procedure and its explicit acceptance boundary are recorded
+in [the graph acceptance note](docs/graph-acceptance.md).
 
 ## Prerequisites
 

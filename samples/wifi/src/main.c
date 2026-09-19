@@ -9,10 +9,12 @@
 
 #include <dds/ddsrt/heap.h>
 #include <rcl/error_handling.h>
+#include <rcl/graph.h>
 #include <rcl/rcl.h>
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
 #include <rcutils/logging.h>
+#include <rcutils/types/string_array.h>
 #include <rmw/qos_profiles.h>
 #include <std_msgs/msg/detail/u_int32__rosidl_typesupport_introspection_c.h>
 #include <std_msgs/msg/u_int32.h>
@@ -33,6 +35,9 @@ enum {
   DEVICE_TO_DESKTOP_VALUE = 271828182U,
   TRANSIENT_HISTORY_LAST_VALUE = 5U,
   TRANSIENT_LIVE_VALUE = 6U,
+  GRAPH_INITIAL_HOLD_MS = 15000,
+  GRAPH_TRANSITION_HOLD_MS = 8000,
+  GRAPH_PHASE_TIMEOUT_MS = 60000,
 };
 
 typedef struct allocation_header_s {
@@ -337,6 +342,202 @@ static void report_resources(void)
          dds_snapshot.high_water_bytes);
 }
 
+typedef struct graph_expectation_s {
+  const char *phase;
+  bool alpha_node;
+  bool beta_node;
+  bool topic_a;
+  bool topic_b;
+  size_t topic_a_publishers;
+  size_t topic_a_subscribers;
+} graph_expectation_t;
+
+static bool graph_has_node(const rcutils_string_array_t *names,
+                           const rcutils_string_array_t *namespaces, const char *name,
+                           const char *namespace_)
+{
+  for (size_t index = 0U; index < names->size; ++index) {
+    if (strcmp(names->data[index], name) == 0 &&
+        strcmp(namespaces->data[index], namespace_) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool graph_has_topic_type(const rcl_names_and_types_t *topics, const char *topic,
+                                 const char *type)
+{
+  for (size_t topic_index = 0U; topic_index < topics->names.size; ++topic_index) {
+    if (strcmp(topics->names.data[topic_index], topic) != 0) {
+      continue;
+    }
+    for (size_t type_index = 0U; type_index < topics->types[topic_index].size; ++type_index) {
+      if (strcmp(topics->types[topic_index].data[type_index], type) == 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+static bool graph_matches(rcl_node_t *node, rcl_allocator_t *allocator,
+                          const graph_expectation_t *expected)
+{
+  rcutils_string_array_t names = rcutils_get_zero_initialized_string_array();
+  rcutils_string_array_t namespaces = rcutils_get_zero_initialized_string_array();
+  rcl_names_and_types_t topics = rcl_get_zero_initialized_names_and_types();
+  bool names_initialized = false;
+  bool topics_initialized = false;
+  bool matches = false;
+  size_t publishers = 0U;
+  size_t subscribers = 0U;
+
+  if (!check(rcl_get_node_names(node, *allocator, &names, &namespaces),
+             "graph_get_node_names")) {
+    goto cleanup;
+  }
+  names_initialized = true;
+  if (!check(rcl_get_topic_names_and_types(node, allocator, false, &topics),
+             "graph_get_topic_names_and_types")) {
+    goto cleanup;
+  }
+  topics_initialized = true;
+  if (!check(rcl_count_publishers(node, "/ros2_zephyr/graph_remote_a", &publishers),
+             "graph_count_publishers")) {
+    goto cleanup;
+  }
+  if (!check(rcl_count_subscribers(node, "/ros2_zephyr/graph_remote_a", &subscribers),
+             "graph_count_subscribers")) {
+    goto cleanup;
+  }
+
+  matches = graph_has_node(&names, &namespaces, "graph_peer_alpha", "/graph_acceptance") ==
+                expected->alpha_node &&
+            graph_has_node(&names, &namespaces, "graph_peer_beta", "/graph_acceptance_alt") ==
+                expected->beta_node &&
+            graph_has_topic_type(&topics, "/ros2_zephyr/graph_remote_a",
+                                 "std_msgs/msg/UInt32") == expected->topic_a &&
+            graph_has_topic_type(&topics, "/ros2_zephyr/graph_remote_b",
+                                 "std_msgs/msg/UInt32") == expected->topic_b &&
+            publishers == expected->topic_a_publishers &&
+            subscribers == expected->topic_a_subscribers;
+
+cleanup:
+  if (topics_initialized && !check(rcl_names_and_types_fini(&topics), "graph_topic_names_fini")) {
+    matches = false;
+  }
+  if (names_initialized) {
+    if (rcutils_string_array_fini(&names) != RCUTILS_RET_OK ||
+        rcutils_string_array_fini(&namespaces) != RCUTILS_RET_OK) {
+      printf("ROS2_ZEPHYR_ERROR operation=graph_node_names_fini\n");
+      matches = false;
+    }
+  }
+  return matches;
+}
+
+static bool wait_for_graph_phase(rcl_node_t *node, rcl_allocator_t *allocator,
+                                 const graph_expectation_t *expected)
+{
+  const int64_t start = k_uptime_get();
+  while (k_uptime_get() - start < GRAPH_PHASE_TIMEOUT_MS) {
+    if (graph_matches(node, allocator, expected)) {
+      printf("ROS2_ZEPHYR_GRAPH_PASS phase=%s elapsed_ms=%" PRId64 "\n", expected->phase,
+             k_uptime_get() - start);
+      return true;
+    }
+    k_sleep(K_MSEC(100));
+  }
+  printf("ROS2_ZEPHYR_ERROR operation=graph_phase_timeout phase=%s\n", expected->phase);
+  return false;
+}
+
+static int __attribute__((unused)) run_graph_node(rcl_node_t *node, rcl_allocator_t *allocator)
+{
+  static const graph_expectation_t phases[] = {
+      {.phase = "initial",
+       .alpha_node = true,
+       .beta_node = true,
+       .topic_a = true,
+       .topic_b = true,
+       .topic_a_publishers = 2U,
+       .topic_a_subscribers = 2U},
+      {.phase = "reduced",
+       .alpha_node = true,
+       .beta_node = false,
+       .topic_a = true,
+       .topic_b = false,
+       .topic_a_publishers = 1U,
+       .topic_a_subscribers = 0U},
+      {.phase = "participant_lost"},
+      {.phase = "restart",
+       .alpha_node = true,
+       .topic_a = true,
+       .topic_a_subscribers = 1U},
+      {.phase = "restart_lost"},
+  };
+
+  printf("ROS2_ZEPHYR_READY role=node domain=%d\n", CONFIG_ROS2_ZEPHYR_DOMAIN_ID);
+  for (size_t index = 0U; index < ARRAY_SIZE(phases); ++index) {
+    if (!wait_for_graph_phase(node, allocator, &phases[index])) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static int __attribute__((unused)) run_graph_pubsub(rcl_node_t *node)
+{
+  rcl_publisher_t publisher = rcl_get_zero_initialized_publisher();
+  rcl_subscription_t subscription = rcl_get_zero_initialized_subscription();
+  const rmw_qos_profile_t qos = wifi_qos();
+  bool publisher_initialized = false;
+  bool subscription_initialized = false;
+  int result = 1;
+
+  if (!check(rclc_publisher_init(&publisher, node, uint32_type_support(),
+                                 "ros2_zephyr/graph_local", &qos),
+             "graph_publisher_init")) {
+    goto cleanup;
+  }
+  publisher_initialized = true;
+  if (!check(rclc_subscription_init(&subscription, node, uint32_type_support(),
+                                    "ros2_zephyr/graph_local", &qos),
+             "graph_subscription_init")) {
+    goto cleanup;
+  }
+  subscription_initialized = true;
+
+  printf("ROS2_ZEPHYR_GRAPH_LOCAL phase=pubsub\n");
+  printf("ROS2_ZEPHYR_READY role=pubsub domain=%d\n", CONFIG_ROS2_ZEPHYR_DOMAIN_ID);
+  k_sleep(K_MSEC(GRAPH_INITIAL_HOLD_MS));
+  if (rcl_publisher_fini(&publisher, node) != RCL_RET_OK) {
+    printf("ROS2_ZEPHYR_ERROR operation=graph_publisher_fini\n");
+    goto cleanup;
+  }
+  publisher_initialized = false;
+  printf("ROS2_ZEPHYR_GRAPH_LOCAL phase=subscription_only\n");
+  k_sleep(K_MSEC(GRAPH_TRANSITION_HOLD_MS));
+  if (rcl_subscription_fini(&subscription, node) != RCL_RET_OK) {
+    printf("ROS2_ZEPHYR_ERROR operation=graph_subscription_fini\n");
+    goto cleanup;
+  }
+  subscription_initialized = false;
+  printf("ROS2_ZEPHYR_GRAPH_LOCAL phase=node_only\n");
+  k_sleep(K_MSEC(GRAPH_TRANSITION_HOLD_MS));
+  result = 0;
+
+cleanup:
+  if (subscription_initialized && rcl_subscription_fini(&subscription, node) != RCL_RET_OK) {
+    result = 1;
+  }
+  if (publisher_initialized && rcl_publisher_fini(&publisher, node) != RCL_RET_OK) {
+    result = 1;
+  }
+  return result;
+}
+
 static void subscription_callback(const void *message)
 {
   const std_msgs__msg__UInt32 *sample = message;
@@ -531,8 +732,12 @@ cleanup:
 
 int main(void)
 {
-#if defined(ROS2_ZEPHYR_WIFI_ROLE_pub)
+#if defined(ROS2_ZEPHYR_WIFI_ROLE_node)
+  const char *role = "node";
+#elif defined(ROS2_ZEPHYR_WIFI_ROLE_pub)
   const char *role = "pub";
+#elif defined(ROS2_ZEPHYR_WIFI_ROLE_pubsub)
+  const char *role = "pubsub";
 #else
   const char *role = "sub";
 #endif
@@ -540,6 +745,13 @@ int main(void)
          "path=rclc-rcl-rmw_cyclonedds_c-cyclonedds\n",
          CONFIG_BOARD_TARGET, role, wifi_reliability_name(), wifi_durability_name(),
          ROS2_ZEPHYR_WIFI_DEPTH);
+  printf("ROS2_ZEPHYR_GRAPH_LIMITS local_nodes=%d endpoints_per_node=%d participants=%d "
+         "nodes=%d endpoints=%d\n",
+         CONFIG_ROS2_ZEPHYR_GRAPH_MAX_LOCAL_NODES,
+         CONFIG_ROS2_ZEPHYR_GRAPH_MAX_ENDPOINTS_PER_NODE,
+         CONFIG_ROS2_ZEPHYR_GRAPH_CACHE_MAX_PARTICIPANTS,
+         CONFIG_ROS2_ZEPHYR_GRAPH_CACHE_MAX_NODES,
+         CONFIG_ROS2_ZEPHYR_GRAPH_CACHE_MAX_ENDPOINTS);
   if (!connect_wifi()) {
     return 1;
   }
@@ -573,8 +785,12 @@ int main(void)
   }
   node_initialized = true;
 
-#if defined(ROS2_ZEPHYR_WIFI_ROLE_pub)
+#if defined(ROS2_ZEPHYR_WIFI_ROLE_node)
+  result = run_graph_node(&node, &allocator);
+#elif defined(ROS2_ZEPHYR_WIFI_ROLE_pub)
   result = run_publisher(&node);
+#elif defined(ROS2_ZEPHYR_WIFI_ROLE_pubsub)
+  result = run_graph_pubsub(&node);
 #else
   result = run_subscriber(&node, &support, &allocator);
 #endif

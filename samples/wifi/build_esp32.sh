@@ -13,7 +13,7 @@ environment_file="${ROS2_ZEPHYR_ENV_FILE:-${repository_root}/build/zephyr-env-${
 credentials_file="${ROS2_ZEPHYR_WIFI_ENV_FILE:-${repository_root}/build/wifi.env}"
 
 usage() {
-  echo "usage: $0 [--role pub|sub] [--reliability best_effort|reliable]" \
+  echo "usage: $0 [--role node|pub|sub|pubsub] [--reliability best_effort|reliable]" \
     "[--durability volatile|transient_local] [--depth N]" >&2
 }
 
@@ -50,7 +50,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "${role}" != "pub" && "${role}" != "sub" ]]; then
+if [[ "${role}" != "node" && "${role}" != "pub" && "${role}" != "sub" &&
+      "${role}" != "pubsub" ]]; then
   usage
   exit 2
 fi
