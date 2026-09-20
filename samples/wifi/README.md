@@ -32,9 +32,10 @@ flash and 16 MiB octal PSRAM. Adapt both the devicetree overlay and Kconfig
 fragment before using a different module. The board fragment selects octal STR
 flash mode; DTR calibration does not complete on the tested 32 MiB MXIC part.
 
-After flashing through the native USB Serial/JTAG port, disconnect and
-reconnect board power before running the peer. A USB reset alone did not start
-the application reliably on the tested board.
+Native USB reset and re-enumeration are host-dependent. The automated runner
+starts the peer first and reopens the console if the device disconnects. If a
+USB reset reaches the bootloader but does not start the application, use
+`--no-reset` and press RESET/EN or power-cycle while the runner is waiting.
 
 ## Device subscriber
 
@@ -113,17 +114,18 @@ directory or test results.
 
 ## Reliable acceptance status
 
-Best effort has passed on the physical ESP32-S3 in both directions. Reliable
-also passes in both physical directions on Zephyr 4.4.2 against the stock
-Lyrical `rmw_cyclonedds_cpp` peer. The device subscriber accepted the complete
-18-sample schedule; the desktop publisher used no recovery samples. The
-desktop subscriber received all 18 samples from the device publisher.
+Best Effort and Reliable passed on the physical ESP32-S3 in both directions on
+Zephyr 4.4.0 against a stock Lyrical `rmw_cyclonedds_cpp` peer. Each volatile
+lane transferred the complete 18-sample schedule. The Reliable desktop
+publisher used no recovery samples, and the Reliable board publisher leaves a
+two-second drain window before endpoint teardown because this RMW does not
+implement `rmw_publisher_wait_for_all_acked()`.
 
-The accepted Reliable subscriber uses 1,016,916 bytes of flash and 258,088
-bytes of linked DRAM. The publisher uses 940,148 bytes of flash and 258,080
-bytes of linked DRAM. The native USB capture retained the ROM and simple-boot
-output but not the application console after handoff, so these runs do not
-provide allocator or stack high-water marks.
+The accepted Reliable/Volatile subscriber uses 1,020,992 bytes of linked flash
+and 261,368 bytes of linked DRAM. The publisher uses 1,011,792 bytes of linked
+flash and 261,352 bytes of linked DRAM. Native USB application-console capture
+provided allocator, heap, and stack measurements and verified that ROS and DDS
+live allocation counters returned to zero.
 
 ## Transient Local late joiners
 
@@ -181,11 +183,12 @@ late subscribers received `5, 6`; at depth 3 they received `3, 4, 5, 6`.
 The stock publishers sent the live sample only after matching the board, and
 the board subscribers completed and removed their endpoints.
 
-The accepted depth-1 and depth-3 subscriber images use 1,017,940 bytes of
-flash and 258,088 bytes of linked DRAM. The publisher images use 940,916 bytes
-of flash and 258,080 bytes of linked DRAM. Native USB again did not expose the
-application console after handoff, so these runs establish wire behavior but
-do not add Transient Local allocator or stack high-water measurements.
+The accepted depth-1 and depth-3 subscriber images use 1,021,644 bytes of
+linked flash and 261,368 bytes of linked DRAM. The depth-1 publisher uses
+1,012,276 bytes of linked flash and 261,352 bytes of linked DRAM; the depth-3
+image has the same configuration and passed from a fresh Zephyr 4.4.0 build.
+All four runs captured the application console and ended with zero ROS and DDS
+live allocation bytes.
 
 ## Resource profile
 
@@ -210,6 +213,13 @@ worst-case bounds or Reliable measurements:
 The complete image had 12 threads and reserved 70,144 stack bytes. The
 `dq.builtins` worker had only 496 bytes unused, so the 8 KiB worker setting
 should not be reduced on the strength of this measurement.
+
+The board exposes a bounded 1 MiB external-memory heap from its 16 MiB PSRAM.
+RCL allocations of at least 4 KiB and DDS allocations of at least 8 KiB use
+that heap; smaller synchronization-bearing Cyclone objects remain in internal
+RAM. The accepted runs peaked at 39,376 bytes in the external heap. Access is
+serialized because Zephyr's shared multi-heap API does not provide that
+serialization itself.
 
 Upstream `rclc` links its action support into the executor library and declares
 `rcl_action` as a required dependency. The executor retains references to that
@@ -241,5 +251,20 @@ samples/wifi/build_graph_matrix.sh
 The physical commands, pass markers, configurable cache limits, and resource
 capture requirements are documented in
 [the ESP32-S3 graph acceptance note](../../docs/graph-acceptance.md). Hardware
-results are not claimed until those physical lanes and the QoS regression
-matrix have been captured.
+acceptance passed on 2026-09-20 in both graph directions. The inbound run
+validated participant loss and restart across three participants, three nodes,
+and five remote endpoints. The outbound run passed two complete lifecycles and
+was visible through normal `ros2 node` and `ros2 topic` commands. The complete
+post-graph QoS matrix also passed in both directions.
+
+From a stock ROS 2 Lyrical shell, the graph lanes and the four-profile QoS
+regression in both directions can be run and captured together:
+
+```sh
+samples/wifi/run_hardware_matrix.sh --device /dev/ttyACM0
+```
+
+The runner is strict about UART evidence. If native USB reset does not expose
+the application console, add `--no-reset` and power-cycle the board after each
+flash while the runner is waiting for output. UART capture tolerates the USB
+device disappearing and reopens it after the board re-enumerates.

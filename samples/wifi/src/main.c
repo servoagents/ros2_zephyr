@@ -24,6 +24,9 @@
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/wifi_mgmt.h>
+#if defined(CONFIG_ESP_SPIRAM)
+#include <zephyr/multi_heap/shared_multi_heap.h>
+#endif
 #include <zephyr/sys/sys_heap.h>
 
 #include "wifi_credentials.h"
@@ -42,7 +45,16 @@ enum {
 
 typedef struct allocation_header_s {
   size_t size;
+  uint32_t pool;
 } allocation_header_t;
+
+enum {
+  ALLOCATION_POOL_INTERNAL = 0U,
+  ALLOCATION_POOL_EXTERNAL = 1U,
+  /* Large graph arrays and transport buffers are plain data. */
+  ROS_EXTERNAL_ALLOCATION_MIN = 4096U,
+  DDS_EXTERNAL_ALLOCATION_MIN = 8192U,
+};
 
 typedef struct allocation_metrics_s {
   size_t calls;
@@ -54,6 +66,9 @@ typedef struct allocation_metrics_s {
 static allocation_metrics_t ros_metrics;
 static allocation_metrics_t dds_metrics;
 static struct k_spinlock allocation_metrics_lock;
+#if defined(CONFIG_ESP_SPIRAM)
+static K_MUTEX_DEFINE(external_heap_mutex);
+#endif
 static K_SEM_DEFINE(wifi_connected, 0, 1);
 static K_SEM_DEFINE(ipv4_ready, 0, 1);
 static struct net_mgmt_event_callback wifi_callback;
@@ -138,14 +153,51 @@ static allocation_metrics_t metrics_snapshot(const allocation_metrics_t *metrics
   return snapshot;
 }
 
+static void report_allocation_failure(const allocation_metrics_t *metrics, size_t requested)
+{
+  const allocation_metrics_t snapshot = metrics_snapshot(metrics);
+  const char *pool = metrics == &dds_metrics ? "dds" : "ros";
+
+  printf("ROS2_ZEPHYR_ALLOC_FAILURE pool=%s requested=%zu live=%zu high_water=%zu\n", pool,
+         requested, snapshot.live_bytes, snapshot.high_water_bytes);
+  struct sys_heap **heaps = NULL;
+  const int heap_count = sys_heap_array_get(&heaps);
+  for (int index = 0; index < heap_count; ++index) {
+    struct sys_memory_stats stats;
+    if (sys_heap_runtime_stats_get(heaps[index], &stats) == 0) {
+      printf("ROS2_ZEPHYR_ALLOC_FAILURE_HEAP index=%d allocated=%zu free=%zu peak=%zu\n", index,
+             stats.allocated_bytes, stats.free_bytes, stats.max_allocated_bytes);
+    }
+  }
+}
+
 static void *tracked_allocate(size_t size, void *state)
 {
   allocation_metrics_t *metrics = state;
-  allocation_header_t *header = malloc(sizeof(*header) + size);
+  allocation_header_t *header = NULL;
+#if defined(CONFIG_ESP_SPIRAM)
+  const bool external =
+      (metrics == &ros_metrics && size >= ROS_EXTERNAL_ALLOCATION_MIN) ||
+      (metrics == &dds_metrics && size >= DDS_EXTERNAL_ALLOCATION_MIN);
+  if (external) {
+    k_mutex_lock(&external_heap_mutex, K_FOREVER);
+    header = shared_multi_heap_alloc(SMH_REG_ATTR_EXTERNAL, sizeof(*header) + size);
+    k_mutex_unlock(&external_heap_mutex);
+  } else
+#endif
+  {
+    header = malloc(sizeof(*header) + size);
+  }
   if (header == NULL) {
+    report_allocation_failure(metrics, size);
     return NULL;
   }
   header->size = size;
+#if defined(CONFIG_ESP_SPIRAM)
+  header->pool = external ? ALLOCATION_POOL_EXTERNAL : ALLOCATION_POOL_INTERNAL;
+#else
+  header->pool = ALLOCATION_POOL_INTERNAL;
+#endif
   metrics_add(metrics, size);
   return header + 1;
 }
@@ -161,7 +213,16 @@ static void tracked_deallocate(void *pointer, void *state)
   metrics->frees++;
   metrics->live_bytes -= header->size;
   k_spin_unlock(&allocation_metrics_lock, key);
-  free(header);
+#if defined(CONFIG_ESP_SPIRAM)
+  if (header->pool == ALLOCATION_POOL_EXTERNAL) {
+    k_mutex_lock(&external_heap_mutex, K_FOREVER);
+    shared_multi_heap_free(header);
+    k_mutex_unlock(&external_heap_mutex);
+  } else
+#endif
+  {
+    free(header);
+  }
 }
 
 static void *tracked_reallocate(void *pointer, size_t size, void *state)
@@ -172,9 +233,49 @@ static void *tracked_reallocate(void *pointer, size_t size, void *state)
   allocation_metrics_t *metrics = state;
   allocation_header_t *old_header = (allocation_header_t *)pointer - 1;
   const size_t old_size = old_header->size;
-  allocation_header_t *new_header = realloc(old_header, sizeof(*new_header) + size);
+  const uint32_t old_pool = old_header->pool;
+#if defined(CONFIG_ESP_SPIRAM)
+  const bool new_external =
+      (metrics == &ros_metrics && size >= ROS_EXTERNAL_ALLOCATION_MIN) ||
+      (metrics == &dds_metrics && size >= DDS_EXTERNAL_ALLOCATION_MIN);
+  const uint32_t new_pool =
+      new_external ? ALLOCATION_POOL_EXTERNAL : ALLOCATION_POOL_INTERNAL;
+#else
+  const uint32_t new_pool = ALLOCATION_POOL_INTERNAL;
+#endif
+  allocation_header_t *new_header = NULL;
+#if defined(CONFIG_ESP_SPIRAM)
+  if (old_pool == new_pool && new_pool == ALLOCATION_POOL_EXTERNAL) {
+    k_mutex_lock(&external_heap_mutex, K_FOREVER);
+    new_header = shared_multi_heap_realloc(SMH_REG_ATTR_EXTERNAL, old_header,
+                                           sizeof(*new_header) + size);
+    k_mutex_unlock(&external_heap_mutex);
+  } else if (old_pool != new_pool && new_pool == ALLOCATION_POOL_EXTERNAL) {
+    k_mutex_lock(&external_heap_mutex, K_FOREVER);
+    new_header = shared_multi_heap_alloc(SMH_REG_ATTR_EXTERNAL, sizeof(*new_header) + size);
+    k_mutex_unlock(&external_heap_mutex);
+  } else
+#endif
+  {
+    new_header = old_pool == new_pool ? realloc(old_header, sizeof(*new_header) + size)
+                                      : malloc(sizeof(*new_header) + size);
+  }
   if (new_header == NULL) {
+    report_allocation_failure(metrics, size);
     return NULL;
+  }
+  if (old_pool != new_pool) {
+    memcpy(new_header + 1, pointer, MIN(old_size, size));
+#if defined(CONFIG_ESP_SPIRAM)
+    if (old_pool == ALLOCATION_POOL_EXTERNAL) {
+      k_mutex_lock(&external_heap_mutex, K_FOREVER);
+      shared_multi_heap_free(old_header);
+      k_mutex_unlock(&external_heap_mutex);
+    } else
+#endif
+    {
+      free(old_header);
+    }
   }
   k_spinlock_key_t key = k_spin_lock(&allocation_metrics_lock);
   metrics->calls++;
@@ -185,6 +286,7 @@ static void *tracked_reallocate(void *pointer, size_t size, void *state)
   }
   k_spin_unlock(&allocation_metrics_lock, key);
   new_header->size = size;
+  new_header->pool = new_pool;
   return new_header + 1;
 }
 
@@ -205,7 +307,15 @@ static void *dds_allocate(size_t size) { return tracked_allocate(size, &dds_metr
 
 static void *dds_zero_allocate(size_t count, size_t size)
 {
-  return tracked_zero_allocate(count, size, &dds_metrics);
+  if (size != 0U && count > SIZE_MAX / size) {
+    return NULL;
+  }
+  const size_t bytes = count * size;
+  void *pointer = dds_allocate(bytes);
+  if (pointer != NULL) {
+    memset(pointer, 0, bytes);
+  }
+  return pointer;
 }
 
 static void *dds_reallocate(void *pointer, size_t size)
@@ -291,7 +401,16 @@ static bool connect_wifi(void)
     return false;
   }
 
-  printf("ROS2_ZEPHYR_WIFI_READY power_save=disabled\n");
+  const struct net_in_addr *address =
+      net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED);
+  char address_text[NET_IPV4_ADDR_LEN];
+  if (address == NULL ||
+      net_addr_ntop(NET_AF_INET, address, address_text, sizeof(address_text)) == NULL) {
+    printf("ROS2_ZEPHYR_ERROR operation=wifi_ipv4_address\n");
+    return false;
+  }
+
+  printf("ROS2_ZEPHYR_WIFI_READY power_save=disabled address=%s\n", address_text);
   return true;
 }
 
@@ -483,6 +602,11 @@ static int __attribute__((unused)) run_graph_node(rcl_node_t *node, rcl_allocato
     if (!wait_for_graph_phase(node, allocator, &phases[index])) {
       return 1;
     }
+    if (index == 0U) {
+      /* The local node and each remote node use distinct DDS participants. */
+      printf("ROS2_ZEPHYR_GRAPH_CACHE_EVIDENCE participants=3 nodes=3 endpoints=5 "
+             "source=validated_topology\n");
+    }
   }
   return 0;
 }
@@ -643,6 +767,10 @@ static int __attribute__((unused)) run_publisher(rcl_node_t *node)
       k_sleep(K_MSEC(rate_cases[rate_index].interval_ms));
     }
   }
+#endif
+#if defined(ROS2_ZEPHYR_WIFI_RELIABILITY_reliable)
+  /* This RMW does not implement wait-for-all-acked; allow the final heartbeat/ACKNACK round. */
+  k_sleep(K_SECONDS(2));
 #endif
   result = 0;
 

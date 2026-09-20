@@ -4,6 +4,7 @@
 """Run the desktop half of the ESP32-S3 Wi-Fi acceptance test."""
 
 import argparse
+import multiprocessing
 import sys
 import time
 
@@ -23,6 +24,7 @@ GRAPH_LOCAL_TOPIC = "/ros2_zephyr/graph_local"
 GRAPH_REMOTE_A = "/ros2_zephyr/graph_remote_a"
 GRAPH_REMOTE_B = "/ros2_zephyr/graph_remote_b"
 GRAPH_HOLD_SECONDS = 12.0
+GRAPH_LOSS_HOLD_SECONDS = 20.0
 
 
 def endpoint_qos(reliability: str, durability: str, depth: int) -> QoSProfile:
@@ -84,7 +86,7 @@ def device_topic_state(node) -> tuple[bool, bool] | None:
     )
 
 
-def run_graph_outbound(node, timeout: float) -> int:
+def run_graph_outbound(node, timeout: float, cycle: int = 1) -> int:
     phases = (
         ("pubsub", (True, True)),
         ("subscription_only", (False, True)),
@@ -98,7 +100,10 @@ def run_graph_outbound(node, timeout: float) -> int:
                 file=sys.stderr,
             )
             return 1
-        print(f"ROS2_ZEPHYR_PEER_GRAPH_PASS direction=outbound phase={phase}")
+        print(
+            f"ROS2_ZEPHYR_PEER_GRAPH_PASS direction=outbound phase={phase} "
+            f"cycle={cycle}"
+        )
 
     if not wait_for_condition(node, lambda: not device_node_visible(node), timeout):
         print(
@@ -106,7 +111,10 @@ def run_graph_outbound(node, timeout: float) -> int:
             file=sys.stderr,
         )
         return 1
-    print("ROS2_ZEPHYR_PEER_GRAPH_PASS direction=outbound phase=node_cleanup")
+    print(
+        "ROS2_ZEPHYR_PEER_GRAPH_PASS direction=outbound phase=node_cleanup "
+        f"cycle={cycle}"
+    )
     return 0
 
 
@@ -119,75 +127,159 @@ def create_graph_node(name: str, namespace: str):
     )
 
 
-def hold_graph_phase(node, phase: str) -> None:
-    print(f"ROS2_ZEPHYR_PEER_GRAPH_PHASE direction=inbound phase={phase}", flush=True)
-    deadline = time.monotonic() + GRAPH_HOLD_SECONDS
+def graph_inbound_worker(connection, profile: str, timeout: float) -> None:
+    rclpy.init()
+    if profile == "beta":
+        node = create_graph_node("graph_peer_beta", "/graph_acceptance_alt")
+        publishers = [node.create_publisher(UInt32, GRAPH_REMOTE_B, 10)]
+        subscriptions = []
+    else:
+        node = create_graph_node("graph_peer_alpha", "/graph_acceptance")
+        publishers = []
+        subscriptions = []
+        if profile == "initial":
+            publishers = [
+                node.create_publisher(UInt32, GRAPH_REMOTE_A, 10),
+                node.create_publisher(UInt32, GRAPH_REMOTE_A, 10),
+            ]
+            subscriptions = [
+                node.create_subscription(UInt32, GRAPH_REMOTE_A, lambda _: None, 10),
+                node.create_subscription(UInt32, GRAPH_REMOTE_A, lambda _: None, 10),
+            ]
+        else:
+            subscriptions = [
+                node.create_subscription(UInt32, GRAPH_REMOTE_A, lambda _: None, 10)
+            ]
+    connection.send("ready")
+    visibility_deadline = time.monotonic() + timeout
+    visibility_reported = False
+    try:
+        while True:
+            rclpy.spin_once(node, timeout_sec=0.1)
+            if not visibility_reported and device_node_visible(node):
+                connection.send("visible")
+                visibility_reported = True
+            elif not visibility_reported and time.monotonic() >= visibility_deadline:
+                connection.send("visibility_timeout")
+                visibility_reported = True
+            if not connection.poll():
+                continue
+            command = connection.recv()
+            if command == "reduce":
+                node.destroy_publisher(publishers.pop())
+                for subscription in subscriptions:
+                    node.destroy_subscription(subscription)
+                subscriptions.clear()
+                connection.send("reduced")
+            elif command == "stop":
+                return
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+def wait_for_worker(connection, process, expected: str, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        rclpy.spin_once(node, timeout_sec=0.1)
+        if connection.poll(0.1):
+            message = connection.recv()
+            if message == expected:
+                return True
+            if message == "visibility_timeout":
+                return False
+        if not process.is_alive():
+            return False
+    return False
+
+
+def terminate_worker(process) -> None:
+    if process.is_alive():
+        process.kill()
+        process.join(5.0)
+
+
+def start_graph_worker(context, profile: str, timeout: float):
+    parent_connection, child_connection = context.Pipe()
+    process = context.Process(
+        target=graph_inbound_worker,
+        args=(child_connection, profile, timeout),
+    )
+    process.start()
+    child_connection.close()
+    return process, parent_connection
 
 
 def run_graph_inbound(timeout: float) -> int:
-    rclpy.init()
-    alpha = create_graph_node("graph_peer_alpha", "/graph_acceptance")
-    beta = create_graph_node("graph_peer_beta", "/graph_acceptance_alt")
-    alpha_publishers = [
-        alpha.create_publisher(UInt32, GRAPH_REMOTE_A, 10),
-        alpha.create_publisher(UInt32, GRAPH_REMOTE_A, 10),
-    ]
-    alpha_subscriptions = [
-        alpha.create_subscription(UInt32, GRAPH_REMOTE_A, lambda _: None, 10),
-        alpha.create_subscription(UInt32, GRAPH_REMOTE_A, lambda _: None, 10),
-    ]
-    beta_publisher = beta.create_publisher(UInt32, GRAPH_REMOTE_B, 10)
-    beta_destroyed = False
+    context = multiprocessing.get_context("spawn")
+    alpha, alpha_connection = start_graph_worker(context, "initial", timeout)
+    beta, beta_connection = start_graph_worker(context, "beta", timeout)
+    restarted = None
+    restarted_connection = None
     try:
-        if not wait_for_condition(alpha, lambda: device_node_visible(alpha), timeout):
+        if not wait_for_worker(alpha_connection, alpha, "ready", timeout) or not wait_for_worker(
+            beta_connection, beta, "ready", timeout
+        ):
+            print(
+                "ROS2_ZEPHYR_PEER_ERROR role=graph-inbound reason=worker_start_timeout",
+                file=sys.stderr,
+            )
+            return 1
+        if not wait_for_worker(alpha_connection, alpha, "visible", timeout):
             print(
                 "ROS2_ZEPHYR_PEER_ERROR role=graph-inbound reason=device_discovery_timeout",
                 file=sys.stderr,
             )
             return 1
-        hold_graph_phase(alpha, "initial")
+        print("ROS2_ZEPHYR_PEER_GRAPH_PHASE direction=inbound phase=initial", flush=True)
+        time.sleep(GRAPH_HOLD_SECONDS)
 
-        alpha.destroy_publisher(alpha_publishers.pop())
-        for subscription in alpha_subscriptions:
-            alpha.destroy_subscription(subscription)
-        alpha_subscriptions.clear()
-        beta.destroy_publisher(beta_publisher)
-        beta.destroy_node()
-        beta_destroyed = True
-        hold_graph_phase(alpha, "reduced")
+        alpha_connection.send("reduce")
+        if not wait_for_worker(alpha_connection, alpha, "reduced", timeout):
+            print(
+                "ROS2_ZEPHYR_PEER_ERROR role=graph-inbound reason=reduce_timeout",
+                file=sys.stderr,
+            )
+            return 1
+        terminate_worker(beta)
+        print("ROS2_ZEPHYR_PEER_GRAPH_PHASE direction=inbound phase=reduced", flush=True)
+        time.sleep(GRAPH_LOSS_HOLD_SECONDS)
+
+        terminate_worker(alpha)
+        print(
+            "ROS2_ZEPHYR_PEER_GRAPH_PHASE direction=inbound phase=participant_lost",
+            flush=True,
+        )
+        time.sleep(GRAPH_LOSS_HOLD_SECONDS)
+
+        restarted, restarted_connection = start_graph_worker(context, "restart", timeout)
+        if not wait_for_worker(
+            restarted_connection, restarted, "ready", timeout
+        ) or not wait_for_worker(restarted_connection, restarted, "visible", timeout):
+            print(
+                "ROS2_ZEPHYR_PEER_ERROR role=graph-inbound reason=restart_timeout",
+                file=sys.stderr,
+            )
+            return 1
+        print("ROS2_ZEPHYR_PEER_GRAPH_PHASE direction=inbound phase=restart", flush=True)
+        time.sleep(GRAPH_HOLD_SECONDS)
+
+        terminate_worker(restarted)
+        print(
+            "ROS2_ZEPHYR_PEER_GRAPH_PHASE direction=inbound phase=restart_lost",
+            flush=True,
+        )
+        time.sleep(GRAPH_LOSS_HOLD_SECONDS)
+        print("ROS2_ZEPHYR_PEER_PASS role=graph-inbound")
+        return 0
     finally:
-        if not beta_destroyed:
-            beta.destroy_node()
-        alpha.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
-
-    print(
-        "ROS2_ZEPHYR_PEER_GRAPH_PHASE direction=inbound phase=participant_lost",
-        flush=True,
-    )
-    time.sleep(GRAPH_HOLD_SECONDS)
-
-    rclpy.init()
-    restarted = create_graph_node("graph_peer_alpha", "/graph_acceptance")
-    subscription = restarted.create_subscription(UInt32, GRAPH_REMOTE_A, lambda _: None, 10)
-    try:
-        hold_graph_phase(restarted, "restart")
-        restarted.destroy_subscription(subscription)
-    finally:
-        restarted.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
-
-    print(
-        "ROS2_ZEPHYR_PEER_GRAPH_PHASE direction=inbound phase=restart_lost",
-        flush=True,
-    )
-    time.sleep(GRAPH_HOLD_SECONDS)
-    print("ROS2_ZEPHYR_PEER_PASS role=graph-inbound")
-    return 0
+        terminate_worker(alpha)
+        terminate_worker(beta)
+        if restarted is not None:
+            terminate_worker(restarted)
+        alpha_connection.close()
+        beta_connection.close()
+        if restarted_connection is not None:
+            restarted_connection.close()
 
 
 def run_publisher(
@@ -350,15 +442,29 @@ def main() -> int:
         "--durability", choices=("volatile", "transient_local"), default="volatile"
     )
     parser.add_argument("--depth", type=int, default=32)
+    parser.add_argument(
+        "--cycles",
+        type=int,
+        default=1,
+        help="complete outbound graph lifecycles to observe (graph-outbound only)",
+    )
     args = parser.parse_args()
     if args.depth <= 0:
         parser.error("--depth must be a positive integer")
+    if args.cycles <= 0:
+        parser.error("--cycles must be a positive integer")
+    if args.cycles != 1 and args.role != "graph-outbound":
+        parser.error("--cycles is only valid for graph-outbound")
 
     if args.role == "graph-inbound":
         return run_graph_inbound(args.timeout)
 
     rclpy.init()
-    node = rclpy.create_node(f"ros2_zephyr_wifi_peer_{args.role}")
+    node = rclpy.create_node(
+        f"ros2_zephyr_wifi_peer_{args.role.replace('-', '_')}",
+        enable_rosout=False,
+        start_parameter_services=False,
+    )
     try:
         if args.role == "pub":
             return run_publisher(
@@ -368,7 +474,10 @@ def main() -> int:
             return run_subscriber(
                 node, args.timeout, args.reliability, args.durability, args.depth
             )
-        return run_graph_outbound(node, args.timeout)
+        for cycle in range(1, args.cycles + 1):
+            if run_graph_outbound(node, args.timeout, cycle) != 0:
+                return 1
+        return 0
     finally:
         node.destroy_node()
         rclpy.shutdown()
