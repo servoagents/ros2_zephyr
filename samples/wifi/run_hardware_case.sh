@@ -173,7 +173,7 @@ if [[ -n "${peer_address}" &&
 fi
 peer_cyclonedds_uri=""
 if [[ -n "${peer_address}" ]]; then
-  peer_cyclonedds_uri="<CycloneDDS><Domain><General><NetworkInterfaceAddress>${peer_address}</NetworkInterfaceAddress></General></Domain></CycloneDDS>"
+  peer_cyclonedds_uri="<CycloneDDS><Domain><General><Interfaces><NetworkInterface address='${peer_address}' multicast='false'/></Interfaces><AllowMulticast>false</AllowMulticast></General></Domain></CycloneDDS>"
 fi
 if [[ "${build_image}" == true && ! -d "${rmw_source}/rmw_cyclonedds_c" ]]; then
   echo "ROS2_ZEPHYR_RMW_SOURCE must name the rmw_cyclonedds_c repository" >&2
@@ -223,6 +223,29 @@ device_log="${output_dir}/device.log"
 cli_log="${output_dir}/ros2-cli.log"
 summary_log="${output_dir}/summary.log"
 : >"${summary_log}"
+
+source_revision() {
+  local source_dir="$1"
+  local revision
+
+  if [[ -z "${source_dir}" || ! -d "${source_dir}" ]]; then
+    printf unknown
+    return
+  fi
+  revision="$(git -C "${source_dir}" rev-parse HEAD 2>/dev/null || printf unknown)"
+  if [[ "${revision}" != "unknown" ]] &&
+     [[ -n "$(git -C "${source_dir}" status --short --untracked-files=no 2>/dev/null)" ]]; then
+    revision="${revision}-dirty"
+  fi
+  printf '%s' "${revision}"
+}
+
+zephyr_source="$(bash -c 'source "$1"; printf "%s" "${ZEPHYR_BASE:-}"' \
+  _ "${environment_file}")"
+printf 'SOURCE ros2_zephyr=%s rmw_cyclonedds_c=%s zephyr=%s\n' \
+  "$(source_revision "${repository_root}")" \
+  "$(source_revision "${rmw_source}")" \
+  "$(source_revision "${zephyr_source}")" | tee -a "${summary_log}"
 
 if [[ "${build_image}" == true ]]; then
   echo "BUILD role=${role} reliability=${reliability} durability=${durability} depth=${depth}" |
@@ -334,7 +357,7 @@ fi
 source "${environment_file}"
 capture_python="${ROS2_ZEPHYR_CAPTURE_PYTHON:-$(command -v python3)}"
 capture_args=("${serial_device}" --timeout "${capture_timeout}" \
-  --until 'ROS2_ZEPHYR_CLEANUP status=0 ros_live=0 dds_live=0' --reconnect)
+  --until 'ROS2_ZEPHYR_CLEANUP status=0 ros_live=0 middleware_live=0' --reconnect)
 if [[ "${reset_device}" == false ]]; then
   capture_args+=(--no-reset)
 fi
@@ -365,7 +388,7 @@ if [[ "${role}" == "pubsub" ]]; then
   if [[ "${cli_status}" -eq 0 ]]; then
     cli_interface_xml=""
     if [[ -n "${peer_address}" ]]; then
-      cli_interface_xml="<NetworkInterfaceAddress>${peer_address}</NetworkInterfaceAddress>"
+      cli_interface_xml="<Interfaces><NetworkInterface address='${peer_address}' multicast='false'/></Interfaces><AllowMulticast>false</AllowMulticast>"
     fi
     cli_cyclonedds_uri="<CycloneDDS><Domain><General>${cli_interface_xml}</General><Discovery><ParticipantIndex>1</ParticipantIndex><MaxAutoParticipantIndex>0</MaxAutoParticipantIndex><Peers><Peer Address='${device_address}'/></Peers></Discovery></Domain></CycloneDDS>"
     set +e
@@ -458,7 +481,7 @@ fi
 for marker in \
   'ROS2_ZEPHYR_ALLOC ' \
   'ROS2_ZEPHYR_STACK_TOTAL ' \
-  'ROS2_ZEPHYR_CLEANUP status=0 ros_live=0 dds_live=0' \
+  'ROS2_ZEPHYR_CLEANUP status=0 ros_live=0 middleware_live=0' \
   "${device_markers[@]}"; do
   if ! grep -Fq "${marker}" "${device_log}"; then
     echo "missing device marker: ${marker}" | tee -a "${summary_log}" >&2
@@ -487,7 +510,7 @@ if [[ "${role}" == "pubsub" ]]; then
     'ROS2_ZEPHYR_GRAPH_LOCAL phase=pubsub' \
     'ROS2_ZEPHYR_GRAPH_LOCAL phase=subscription_only' \
     'ROS2_ZEPHYR_GRAPH_LOCAL phase=node_only' \
-    'ROS2_ZEPHYR_CLEANUP status=0 ros_live=0 dds_live=0'; do
+    'ROS2_ZEPHYR_CLEANUP status=0 ros_live=0 middleware_live=0'; do
     marker_count="$(grep -Fc "${marker}" "${device_log}" || true)"
     if [[ "${marker_count}" -ne 2 ]]; then
       echo "restart evidence does not contain two device markers: ${marker}" |

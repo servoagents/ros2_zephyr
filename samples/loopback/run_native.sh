@@ -25,7 +25,7 @@ if [[ "${status}" -ne 0 ]] ||
   ! grep -q '^ROS2_ZEPHYR_LOOPBACK_PASS value=42424242 array=10,11,12,13$' "${LOG_FILE}" ||
   ! grep -q '^ROS2_ZEPHYR_ALLOC ' "${LOG_FILE}" ||
   ! grep -q '^ROS2_ZEPHYR_STACK_TOTAL ' "${LOG_FILE}" ||
-  ! grep -q '^ROS2_ZEPHYR_CLEANUP status=0 ros_live=0 dds_live=0$' "${LOG_FILE}"; then
+  ! grep -q '^ROS2_ZEPHYR_CLEANUP status=0 ros_live=0 middleware_live=0 middleware=cyclonedds$' "${LOG_FILE}"; then
   cat "${LOG_FILE}" >&2
   echo "ROS 2 Zephyr native loopback failed (status=${status})" >&2
   exit 1

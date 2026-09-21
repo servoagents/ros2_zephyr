@@ -65,7 +65,9 @@ def main() -> int:
         sys.stdout.buffer.write(chunk)
         sys.stdout.buffer.flush()
         recent.extend(chunk)
-        if marker in recent:
+        marker_index = recent.find(marker)
+        marker_end = marker_index + len(marker)
+        if marker_index >= 0 and b"\n" in recent[marker_end:]:
             if port is not None:
                 port.close()
             return 0

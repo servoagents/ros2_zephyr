@@ -6,13 +6,13 @@
 Zephyr application
   -> rclc
   -> rcl
-  -> rmw_cyclonedds_c
-  -> Eclipse Cyclone DDS
+  -> selected RMW backend
+  -> selected middleware
   -> Zephyr networking and kernel services
 ```
 
-The device is a DDS/RTPS participant. This path does not use Micro XRCE-DDS or
-a micro-ROS Agent.
+The accepted backend is `rmw_cyclonedds_c`, for which the device is a DDS/RTPS
+participant. This path does not use Micro XRCE-DDS or a micro-ROS Agent.
 
 ## Status
 
@@ -26,7 +26,7 @@ The current release is an early, fixed-profile port:
   finite keep-last QoS;
 - bounded outbound and inbound ROS graph state is available in the development
   middleware profile;
-- ROS 2 and Cyclone DDS are linked into one static archive.
+- exactly one RMW backend is selected by Kconfig and linked statically.
 
 The loopback sample has passed on an ESP32-S3-DevKitC using ROS 2 Lyrical. The
 same test also passes on `native_sim` with Lyrical and Kilted. On Zephyr 4.4.2,
@@ -37,17 +37,18 @@ the board, with no Agent.
 
 Best Effort/Volatile, Reliable/Volatile, and Reliable/Transient Local depths 1
 and 3 have passed in both physical directions. The bounded graph implementation
-passes its Linux interoperability lanes and cross-builds for ESP32-S3; its
-physical graph acceptance remains pending. The repository's pinned Zephyr
-baseline remains 4.4.0 until a stable 4.4.x release contains the timed
-condition-wait fix. Services, actions, generic variable-size application
-messages, DDS Security, and extended graph APIs remain outside the current
-profile.
+passes its Linux interoperability lanes and physical ESP32-S3 acceptance in
+both graph directions. The repository's pinned Zephyr baseline remains 4.4.0
+until a stable 4.4.x release contains the timed condition-wait fix. Services,
+actions, generic variable-size application messages, DDS Security, and
+extended graph APIs remain outside the current profile.
 
 The exact accepted hardware configuration, including its XTypes boundary, is
 recorded in [the Wi-Fi baseline](docs/wifi-baseline.md).
 The graph hardware procedure and its explicit acceptance boundary are recorded
 in [the graph acceptance note](docs/graph-acceptance.md).
+The RMW selection boundary and backend capability table are recorded in
+[the backend profile](docs/rmw-backends.md).
 
 ## Prerequisites
 
@@ -116,10 +117,11 @@ CONFIG_ROS2_ZEPHYR=y
 CONFIG_ROS2_ZEPHYR_RMW_CYCLONEDDS_C=y
 ```
 
-The module requires paths to the prepared dependency tree, the pinned Cyclone
-DDS checkout, and the host `idlc` executable. The supplied setup and sample
-scripts provide those paths. See [the architecture notes](docs/architecture.md)
-for the portability boundary and source provenance.
+The selected Cyclone backend requires paths to the prepared dependency tree,
+the pinned Cyclone DDS checkout, and the host `idlc` executable. The supplied
+setup and sample scripts provide those paths. See
+[the architecture notes](docs/architecture.md) for the portability boundary
+and source provenance.
 
 Lyrical adds native-buffer APIs implemented in C++. This fixed C profile builds
 the ordinary ROS C sequences and introspection data, but disables native-buffer

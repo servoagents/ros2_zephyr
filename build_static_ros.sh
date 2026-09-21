@@ -6,34 +6,19 @@ set -euo pipefail
 : "${ROS2_ZEPHYR_DEPS_ROOT:?}"
 : "${ROS2_ZEPHYR_WORK_ROOT:?}"
 : "${ROS2_ZEPHYR_TOOLCHAIN_FILE:?}"
-: "${ROS2_ZEPHYR_CYCLONE_PREFIX:?}"
-: "${ROS2_ZEPHYR_HOST_IDLC:?}"
+: "${ROS2_ZEPHYR_BACKEND_BUILD_SCRIPT:?}"
 : "${ROS2_ZEPHYR_AR:?}"
 : "${ROS2_ZEPHYR_RANLIB:?}"
-: "${ROS2_ZEPHYR_GRAPH_MAX_LOCAL_NODES:?}"
-: "${ROS2_ZEPHYR_GRAPH_MAX_ENDPOINTS_PER_NODE:?}"
-: "${ROS2_ZEPHYR_GRAPH_CACHE_MAX_PARTICIPANTS:?}"
-: "${ROS2_ZEPHYR_GRAPH_CACHE_MAX_NODES:?}"
-: "${ROS2_ZEPHYR_GRAPH_CACHE_MAX_ENDPOINTS:?}"
 
 HOST_ROOT="${ROS2_ZEPHYR_DEPS_ROOT}/host"
 TARGET_SOURCE="${ROS2_ZEPHYR_DEPS_ROOT}/target/src"
 HOST_INSTALL="${HOST_ROOT}/install"
 TARGET_SRC="${ROS2_ZEPHYR_WORK_ROOT}/src"
+# Consumed by the selected backend build script sourced below.
+# shellcheck disable=SC2034
 TARGET_BUILD="${ROS2_ZEPHYR_WORK_ROOT}/build"
 TARGET_INSTALL="${ROS2_ZEPHYR_WORK_ROOT}/install"
 COMBINED="${ROS2_ZEPHYR_WORK_ROOT}/libros2_zephyr.a"
-
-if [[ -n "${ROS2_ZEPHYR_RMW_SOURCE:-}" ]]; then
-  staged_rmw_source="${TARGET_SRC}/servoagents-rmw_cyclonedds_c"
-  mkdir -p "${staged_rmw_source}"
-  command -v rsync >/dev/null || {
-    echo "rsync is required when ROS2_ZEPHYR_RMW_SOURCE is set" >&2
-    exit 1
-  }
-  rsync --archive --delete --delete-excluded --exclude .git --exclude results \
-    "${ROS2_ZEPHYR_RMW_SOURCE}/" "${staged_rmw_source}/"
-fi
 
 # local_setup.sh can exist after an interrupted partial build, so gate on the
 # last host-only CMake package that the target pass needs.
@@ -51,7 +36,7 @@ fi
 
 mkdir -p "${TARGET_SRC}/local"
 for package in \
-  rosidl_core_generators \
+  ros2_zephyr_test_msgs \
   rosidl_core_runtime \
   rosidl_default_generators \
   rosidl_default_runtime; do
@@ -145,46 +130,16 @@ set +u
 # shellcheck disable=SC1091
 source "${HOST_INSTALL}/local_setup.sh"
 set -u
-host_idlc_directory="$(dirname "${ROS2_ZEPHYR_HOST_IDLC}")"
-host_idlc_library_directory="$(cd "${host_idlc_directory}/../lib" && pwd)"
-export PATH="${host_idlc_directory}:${PATH}"
-export LD_LIBRARY_PATH="${host_idlc_library_directory}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 export CMAKE_BUILD_PARALLEL_LEVEL=1
 export ROS2_ZEPHYR_CROSS=1
 
-colcon --log-base "${ROS2_ZEPHYR_WORK_ROOT}/log" build \
-  --base-paths "${TARGET_SRC}" \
-  --build-base "${TARGET_BUILD}" \
-  --install-base "${TARGET_INSTALL}" \
-  --merge-install \
-  --executor sequential \
-  --cmake-force-configure \
-  --packages-up-to rclc cyclonedds_c_test_msgs rmw_cyclonedds_c \
-  --packages-skip-by-dep python_cmake_module \
-  --metas "${ROS2_ZEPHYR_MODULE_DIR}/colcon.meta" \
-  --cmake-args \
-  --no-warn-unused-cli \
-  -DBUILD_SHARED_LIBS=OFF \
-  -DROS2_ZEPHYR_STATIC_BUILD=ON \
-  -DROSIDL_RUNTIME_C_WITH_ROSIDL_BUFFER=OFF \
-  -DBUILD_TESTING=OFF \
-  -DCMAKE_BUILD_TYPE=MinSizeRel \
-  -DCMAKE_POSITION_INDEPENDENT_CODE=OFF \
-  -DCMAKE_LIBRARY_PATH="${host_idlc_library_directory}" \
-  -DCMAKE_TOOLCHAIN_FILE="${ROS2_ZEPHYR_TOOLCHAIN_FILE}" \
-  -DCMAKE_PREFIX_PATH="${ROS2_ZEPHYR_CYCLONE_PREFIX}" \
-  -DCycloneDDS_DIR="${ROS2_ZEPHYR_CYCLONE_PREFIX}/lib/cmake/CycloneDDS" \
-  -DRMW_IMPLEMENTATION=rmw_cyclonedds_c \
-  -DRMW_IMPLEMENTATION_DISABLE_RUNTIME_SELECTION=ON \
-  -DRCL_LOGGING_IMPLEMENTATION=rcl_logging_noop \
-  -DROSIDL_TYPESUPPORT_CYCLONEDDS_C_GENERATE_PACKAGES=cyclonedds_c_test_msgs \
-  -DRMW_CYCLONEDDS_C_DEFAULT_DOMAIN_ID="${ROS2_ZEPHYR_DOMAIN_ID}" \
-  -DRMW_CYCLONEDDS_C_GRAPH_MAX_NODES="${ROS2_ZEPHYR_GRAPH_MAX_LOCAL_NODES}" \
-  -DRMW_CYCLONEDDS_C_GRAPH_MAX_ENDPOINTS_PER_NODE="${ROS2_ZEPHYR_GRAPH_MAX_ENDPOINTS_PER_NODE}" \
-  -DRMW_CYCLONEDDS_C_GRAPH_CACHE_MAX_PARTICIPANTS="${ROS2_ZEPHYR_GRAPH_CACHE_MAX_PARTICIPANTS}" \
-  -DRMW_CYCLONEDDS_C_GRAPH_CACHE_MAX_NODES="${ROS2_ZEPHYR_GRAPH_CACHE_MAX_NODES}" \
-  -DRMW_CYCLONEDDS_C_GRAPH_CACHE_MAX_ENDPOINTS="${ROS2_ZEPHYR_GRAPH_CACHE_MAX_ENDPOINTS}" \
-  -DRMW_CYCLONEDDS_C_URI="${ROS2_ZEPHYR_CYCLONEDDS_URI}"
+if [[ ! -f "${ROS2_ZEPHYR_BACKEND_BUILD_SCRIPT}" ]]; then
+  echo "missing backend build script: ${ROS2_ZEPHYR_BACKEND_BUILD_SCRIPT}" >&2
+  exit 2
+fi
+# The selected backend owns its package set, source override, and CMake options.
+# shellcheck disable=SC1090
+source "${ROS2_ZEPHYR_BACKEND_BUILD_SCRIPT}"
 
 object_root="${ROS2_ZEPHYR_WORK_ROOT}/combined-objects"
 "${CMAKE_COMMAND:-cmake}" -E remove_directory "${object_root}"

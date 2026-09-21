@@ -7,6 +7,7 @@ repository_root="$(cd "${sample_dir}/../.." && pwd)"
 ros_distro="${ROS2_ZEPHYR_ROS_DISTRO:-lyrical}"
 serial_device=""
 output_dir="${repository_root}/results/${ros_distro}/esp32s3-hardware"
+build_root=""
 run_graph=true
 run_qos=true
 build_images=true
@@ -20,6 +21,7 @@ usage: $0 --device PATH [options]
 
 Options:
   --output-dir PATH
+  --build-root PATH
   --graph-only
   --qos-only
   --peer-container IMAGE
@@ -43,6 +45,11 @@ while [[ $# -gt 0 ]]; do
     --output-dir)
       [[ $# -ge 2 ]] || { usage; exit 2; }
       output_dir="$2"
+      shift 2
+      ;;
+    --build-root)
+      [[ $# -ge 2 ]] || { usage; exit 2; }
+      build_root="$2"
       shift 2
       ;;
     --graph-only)
@@ -88,6 +95,9 @@ if [[ -z "${serial_device}" ]]; then
 fi
 
 mkdir -p "${output_dir}"
+if [[ -n "${build_root}" ]]; then
+  mkdir -p "${build_root}"
+fi
 matrix_summary="${output_dir}/summary.log"
 : >"${matrix_summary}"
 
@@ -112,12 +122,22 @@ run_case() {
   local depth="$4"
   local case_name="${role}-${reliability}-${durability}-depth-${depth}"
   local case_dir="${output_dir}/${case_name}"
+  local case_status=0
 
   echo "RUN ${case_name}" | tee -a "${matrix_summary}"
-  if "${sample_dir}/run_hardware_case.sh" "${common_args[@]}" \
+  if [[ -n "${build_root}" ]]; then
+    ROS2_ZEPHYR_WIFI_BUILD_DIR="${build_root}/${case_name}" \
+      "${sample_dir}/run_hardware_case.sh" "${common_args[@]}" \
+        --role "${role}" --reliability "${reliability}" \
+        --durability "${durability}" --depth "${depth}" \
+        --output-dir "${case_dir}" || case_status=$?
+  else
+    "${sample_dir}/run_hardware_case.sh" "${common_args[@]}" \
       --role "${role}" --reliability "${reliability}" \
       --durability "${durability}" --depth "${depth}" \
-      --output-dir "${case_dir}"; then
+      --output-dir "${case_dir}" || case_status=$?
+  fi
+  if [[ "${case_status}" -eq 0 ]]; then
     echo "PASS ${case_name}" | tee -a "${matrix_summary}"
   else
     echo "FAIL ${case_name}" | tee -a "${matrix_summary}" >&2

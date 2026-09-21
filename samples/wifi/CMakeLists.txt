@@ -50,8 +50,16 @@ if(NOT ros_peer_ip MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$")
   message(FATAL_ERROR "ROS_PEER_IP must be an IPv4 address")
 endif()
 
+set(wifi_discovery_options "")
+if(ROS2_ZEPHYR_WIFI_ROLE STREQUAL "node")
+  # The inbound graph lane destroys every desktop participant before creating
+  # another one. Advertise often enough that a lost SPDP packet cannot consume
+  # the board's whole 60-second restart window.
+  set(wifi_discovery_options "<SPDPInterval>5s</SPDPInterval>")
+endif()
+
 set(ROS2_ZEPHYR_CYCLONEDDS_URI
-    "<CycloneDDS><Domain><General><AllowMulticast>false</AllowMulticast><MaxMessageSize>1400B</MaxMessageSize></General><Sizing><ReceiveBufferSize>8KiB</ReceiveBufferSize><ReceiveBufferChunkSize>4KiB</ReceiveBufferChunkSize></Sizing><Discovery><ParticipantIndex>0</ParticipantIndex><MaxAutoParticipantIndex>1</MaxAutoParticipantIndex><Peers><Peer Address='${ros_peer_ip}'/></Peers></Discovery><Threads><Thread Name='recv'><Scheduling><Class>timeshare</Class><Priority>8</Priority></Scheduling></Thread><Thread Name='tev'><Scheduling><Class>timeshare</Class><Priority>4</Priority></Scheduling></Thread><Thread Name='dq.user'><Scheduling><Class>timeshare</Class><Priority>4</Priority></Scheduling></Thread><Thread Name='dq.builtins'><Scheduling><Class>timeshare</Class><Priority>7</Priority></Scheduling></Thread><Thread Name='gc'><Scheduling><Class>timeshare</Class><Priority>4</Priority></Scheduling></Thread></Threads><Internal><MultipleReceiveThreads>false</MultipleReceiveThreads></Internal></Domain></CycloneDDS>"
+    "<CycloneDDS><Domain><General><AllowMulticast>false</AllowMulticast><MaxMessageSize>1400B</MaxMessageSize></General><Sizing><ReceiveBufferSize>8KiB</ReceiveBufferSize><ReceiveBufferChunkSize>4KiB</ReceiveBufferChunkSize></Sizing><Discovery><ParticipantIndex>0</ParticipantIndex><MaxAutoParticipantIndex>1</MaxAutoParticipantIndex>${wifi_discovery_options}<Peers><Peer Address='${ros_peer_ip}'/></Peers></Discovery><Threads><Thread Name='recv'><Scheduling><Class>timeshare</Class><Priority>8</Priority></Scheduling></Thread><Thread Name='tev'><Scheduling><Class>timeshare</Class><Priority>4</Priority></Scheduling></Thread><Thread Name='dq.user'><Scheduling><Class>timeshare</Class><Priority>4</Priority></Scheduling></Thread><Thread Name='dq.builtins'><Scheduling><Class>timeshare</Class><Priority>7</Priority></Scheduling></Thread><Thread Name='gc'><Scheduling><Class>timeshare</Class><Priority>4</Priority></Scheduling></Thread></Threads><Internal><MultipleReceiveThreads>false</MultipleReceiveThreads></Internal></Domain></CycloneDDS>"
     CACHE STRING "Cyclone DDS XML for the Wi-Fi sample" FORCE
 )
 

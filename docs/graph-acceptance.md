@@ -157,6 +157,11 @@ of the matrix. Use `--no-reset` when observing a manual power cycle through a
 native USB console; power-cycle after flashing completes and again after the
 first cleanup while the capture is waiting.
 
+For a release run, use `--build-root` with an empty directory. This prevents a
+cached Zephyr source or toolchain selection from an earlier build from being
+reused. Each case summary records the ROS 2 Zephyr, middleware, and Zephyr
+revisions; a modified source tree is marked `-dirty`.
+
 The capture helper reopens the serial device after native USB
 disconnect/re-enumeration. On the tested board, the flash runner's USB reset
 reaches the simple bootloader but does not reliably start the application; use
@@ -179,21 +184,31 @@ samples/wifi/run_hardware_case.sh --role node --device /dev/ttyACM0 \
 ## Resource evidence
 
 Every firmware role reports linked flash/DRAM at build time. At runtime it
-prints Zephyr heap peaks, ROS and DDS allocator high-water marks, thread count,
-reserved stack, and per-thread unused stack. Record the `node` figures after
-the complete inbound lifecycle because that run covers cache growth and
+prints Zephyr heap peaks, ROS and middleware allocator high-water marks, thread
+count, reserved stack, and per-thread unused stack. Record the `node` figures
+after the complete inbound lifecycle because that run covers cache growth and
 Cyclone's graph-sample deserialization. The automated case summary retains the
-linked-memory totals; `device.log` retains the runtime measurements and graph
-cache topology evidence.
+linked-memory totals and source revisions; `device.log` retains the runtime
+measurements and graph cache topology evidence.
 
-The accepted Lyrical/Zephyr 4.4.0 hardware build on 2026-09-20 produced:
+The clean post-refactor Lyrical/Zephyr 4.4.0 hardware matrix on 2026-09-21
+produced:
 
-| Role | Linked flash | Linked DRAM |
-| --- | ---: | ---: |
-| `node` | 1,008,048 B | 260,824 B |
-| `pub` | 1,011,792 B | 261,352 B |
-| `sub` | 1,020,992 B | 261,368 B |
-| `pubsub` | 1,011,792 B | 261,352 B |
+| Role | QoS | Depth | Linked flash | Linked DRAM |
+| --- | --- | ---: | ---: | ---: |
+| `node` | Reliable/Volatile | 5 | 1,006,260 B | 260,840 B |
+| `pubsub` | Reliable/Volatile | 5 | 1,011,276 B | 261,368 B |
+| `pub` | Best Effort/Volatile | 5 | 1,010,756 B | 261,368 B |
+| `sub` | Best Effort/Volatile | 5 | 1,019,476 B | 261,384 B |
+| `pub` | Reliable/Volatile | 5 | 1,010,644 B | 261,368 B |
+| `sub` | Reliable/Volatile | 5 | 1,019,320 B | 261,384 B |
+| `pub` | Reliable/Transient Local | 1 or 3 | 1,010,924 B | 261,368 B |
+| `sub` | Reliable/Transient Local | 1 or 3 | 1,019,676 B | 261,384 B |
+
+These are the exact accepted values, not a controlled attribution of size
+changes to the refactor. The isolated builds use different absolute paths,
+which can change strings retained in the image. The earlier controlled
+pre-graph comparison below remains the graph-cost measurement.
 
 A controlled comparison against the last pre-graph middleware revision
 (`865d879`) used the same sample, toolchain, Zephyr tree, and build options.
@@ -205,12 +220,13 @@ was unchanged. The retained inbound cache is allocated from the existing heap,
 so its fixed 19,576-byte cost appears in the ROS allocator high-water mark,
 not as extra linked DRAM.
 
-The accepted inbound lifecycle measured 23,622 bytes of ROS allocator high
-water and 121,475 bytes of DDS allocator high water. The 1 MiB bounded external
-heap peaked at 39,376 bytes, while the 136,080-byte internal libc heap peaked at
-118,732 bytes. Twelve reported threads reserved 70,144 bytes of stack in total;
-the tightest measured margin was 496 unused bytes in the 8 KiB `dq.builtins`
-stack. All allocator live-byte counters returned to zero during cleanup.
+The post-refactor inbound lifecycle measured 23,622 bytes of ROS allocator high
+water and at most 125,007 bytes of middleware allocator high water across the
+accepted repetitions. The bounded external heap peaked at 55,840 bytes, while
+the internal libc heap peaked at 120,528 bytes. Twelve reported threads
+reserved 70,144 bytes of stack in total; the tightest measured margin was 496
+unused bytes in the 8 KiB `dq.builtins` stack. All allocator live-byte counters
+returned to zero during cleanup.
 
 ESP32-S3 PSRAM is used only for large plain-data allocations: RCL allocations
 of at least 4 KiB (including the bounded graph arrays) and DDS allocations of
@@ -223,6 +239,10 @@ observer. The CLI snapshot showed `/ros2_zephyr_esp32s3` and both sides of
 `/ros2_zephyr/graph_local`; each lifecycle then removed the endpoints and node.
 The inbound lifecycle passed all five topology phases and validated three
 participants, three nodes, and five remote endpoints at its largest phase.
+After one default-period restart timeout was retained as a failed run, the
+inbound-only SPDP interval was reduced to five seconds. The rebuilt image then
+passed three consecutive participant-loss and restart lifecycles. Other roles
+retain Cyclone's default interval.
 
 The post-graph QoS regression also passed in both directions for Best
 Effort/Volatile depth 5, Reliable/Volatile depth 5, and Reliable/Transient
@@ -235,3 +255,6 @@ Physical acceptance is complete only when both graph directions pass on the
 board, the device disappears from the desktop graph after cleanup and reset,
 the resource markers are captured, and the four existing QoS profiles pass
 again. A cross-build alone is not physical acceptance.
+
+Failures encountered while establishing this profile are recorded in
+[the Cyclone troubleshooting notes](cyclone-troubleshooting.md).
