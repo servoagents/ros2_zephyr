@@ -6,7 +6,8 @@ sample_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd "${sample_dir}/../.." && pwd)"
 ros_distro="${ROS2_ZEPHYR_ROS_DISTRO:-lyrical}"
 serial_device=""
-output_dir="${repository_root}/results/${ros_distro}/esp32s3-hardware"
+rmw="cyclonedds_c"
+output_dir=""
 build_root=""
 run_graph=true
 run_qos=true
@@ -20,6 +21,7 @@ usage() {
 usage: $0 --device PATH [options]
 
 Options:
+  --rmw cyclonedds_c|zenoh_pico
   --output-dir PATH
   --build-root PATH
   --graph-only
@@ -29,14 +31,21 @@ Options:
   --no-build
   --no-reset
 
-Runs both graph directions and, unless restricted, both device directions for
-Best Effort/Volatile, Reliable/Volatile, and Reliable/Transient Local depths
-1 and 3. The board is flashed and reset for every case.
+Cyclone runs both graph directions and both device directions for Best
+Effort/Volatile, Reliable/Volatile, and Reliable/Transient Local depths 1 and
+3. Zenoh-Pico runs both device directions for the two Volatile profiles;
+graph discovery and Transient Local are recorded as skips. The board is
+flashed and reset for every case.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --rmw)
+      [[ $# -ge 2 ]] || { usage; exit 2; }
+      rmw="$2"
+      shift 2
+      ;;
     --device)
       [[ $# -ge 2 ]] || { usage; exit 2; }
       serial_device="$2"
@@ -89,11 +98,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "${rmw}" != "cyclonedds_c" && "${rmw}" != "zenoh_pico" ]]; then
+  usage
+  exit 2
+fi
 if [[ -z "${serial_device}" ]]; then
   usage
   exit 2
 fi
 
+output_dir="${output_dir:-${repository_root}/results/${ros_distro}/esp32s3-hardware-${rmw}}"
 mkdir -p "${output_dir}"
 if [[ -n "${build_root}" ]]; then
   mkdir -p "${build_root}"
@@ -101,7 +115,7 @@ fi
 matrix_summary="${output_dir}/summary.log"
 : >"${matrix_summary}"
 
-common_args=(--device "${serial_device}")
+common_args=(--rmw "${rmw}" --device "${serial_device}")
 if [[ "${build_images}" == false ]]; then
   common_args+=(--no-build)
 fi
@@ -146,17 +160,29 @@ run_case() {
 }
 
 if [[ "${run_graph}" == true ]]; then
-  run_case pubsub reliable volatile 5
-  run_case node reliable volatile 5
+  if [[ "${rmw}" == "cyclonedds_c" ]]; then
+    run_case pubsub reliable volatile 5
+    run_case node reliable volatile 5
+  else
+    echo "SKIP ROS graph: rmw_zenoh_pico has no interoperable graph discovery" |
+      tee -a "${matrix_summary}"
+  fi
 fi
 
 if [[ "${run_qos}" == true ]]; then
   profiles=(
     'best_effort volatile 5'
     'reliable volatile 5'
-    'reliable transient_local 1'
-    'reliable transient_local 3'
   )
+  if [[ "${rmw}" == "cyclonedds_c" ]]; then
+    profiles+=(
+      'reliable transient_local 1'
+      'reliable transient_local 3'
+    )
+  else
+    echo "SKIP Transient Local: rmw_zenoh_pico does not retain history" |
+      tee -a "${matrix_summary}"
+  fi
   for profile in "${profiles[@]}"; do
     read -r reliability durability depth <<<"${profile}"
     run_case pub "${reliability}" "${durability}" "${depth}"
@@ -164,4 +190,4 @@ if [[ "${run_qos}" == true ]]; then
   done
 fi
 
-echo "PASS ESP32-S3 graph and QoS hardware matrix" | tee -a "${matrix_summary}"
+echo "PASS ESP32-S3 ${rmw} hardware matrix" | tee -a "${matrix_summary}"

@@ -11,12 +11,6 @@
         "-DRCUTILS_NO_PROCESS_SUPPORT=ON"
       ]
     },
-    "rmw_implementation": {
-      "cmake-args": [
-        "-DRMW_IMPLEMENTATION=rmw_cyclonedds_c",
-        "-DRMW_IMPLEMENTATION_DISABLE_RUNTIME_SELECTION=ON"
-      ]
-    },
     "tracetools": {
       "cmake-args": [
         "-DTRACETOOLS_DISABLED=ON",

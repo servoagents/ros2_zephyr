@@ -47,7 +47,7 @@ for package in \
   fi
 done
 
-for source_group in micro_ros ros2 servoagents; do
+for source_group in fj-blanco micro_ros ros2 servoagents; do
   group_path="${TARGET_SOURCE}/${source_group}"
   [[ -d "${group_path}" ]] || continue
   for repository in "${group_path}"/*; do

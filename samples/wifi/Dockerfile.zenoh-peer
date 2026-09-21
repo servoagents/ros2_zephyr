@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: Apache-2.0
+
+ARG ROS_IMAGE=ros@sha256:c3706ef0a0aa45413c07803cf433602f543b22e45b4855f6fca955c2d8ecc4e8
+FROM ${ROS_IMAGE} AS builder
+
+ARG RMW_ZENOH_REVISION=aae224e449f8f364f4a8025fe85899ce06f5381b
+
+RUN apt-get update \
+ && apt-get install --no-install-recommends -y \
+      cargo \
+      clang \
+      git \
+      ros-jazzy-ament-cmake-vendor-package \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN git clone https://github.com/ros2/rmw_zenoh.git /opt/rmw_zenoh/src/rmw_zenoh \
+ && git -C /opt/rmw_zenoh/src/rmw_zenoh checkout --detach "${RMW_ZENOH_REVISION}" \
+ && test "$(git -C /opt/rmw_zenoh/src/rmw_zenoh rev-parse HEAD)" = "${RMW_ZENOH_REVISION}"
+
+RUN . /opt/ros/jazzy/setup.sh \
+ && colcon build \
+      --base-paths /opt/rmw_zenoh/src \
+      --build-base /opt/rmw_zenoh/build \
+      --install-base /opt/rmw_zenoh/install \
+      --merge-install \
+      --executor sequential \
+      --packages-up-to rmw_zenoh_cpp \
+      --cmake-args -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+
+FROM ${ROS_IMAGE}
+
+ARG RMW_ZENOH_REVISION=aae224e449f8f364f4a8025fe85899ce06f5381b
+LABEL org.opencontainers.image.revision="${RMW_ZENOH_REVISION}"
+
+COPY --from=builder /opt/rmw_zenoh/install /opt/rmw_zenoh/install
+COPY zenoh-peer-entrypoint.sh /zenoh-peer-entrypoint.sh
+ENTRYPOINT ["/zenoh-peer-entrypoint.sh"]
+CMD ["bash"]

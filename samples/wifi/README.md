@@ -2,7 +2,8 @@
 
 This sample runs a normal `rclc` node on an ESP32-S3 and exchanges
 `std_msgs/msg/UInt32` messages with an unmodified ROS 2 desktop node. Cyclone
-DDS communicates directly over Wi-Fi; no Agent is involved.
+DDS communicates directly over Wi-Fi; the experimental Zenoh-Pico backend
+uses a stock `rmw_zenoh_cpp` router. No micro-ROS Agent is involved.
 
 The test sends 18 messages: three at 1 Hz, five at 10 Hz, and ten at 100 Hz.
 Best effort is the default and preserves the accepted hardware regression;
@@ -231,6 +232,48 @@ shim does not add action support to the current profile.
 The current workaround for Zephyr's timed condition-wait relock bug is enabled
 only for the 4.4.0 through 4.4.2 release tags. It should be removed once the
 project moves to a stable Zephyr release containing the upstream fix.
+
+## Zenoh-Pico backend
+
+The same application can be built with the pinned GitHub revision of
+`rmw_zenoh_pico`. Build the matching stock Jazzy peer image, then select the
+backend explicitly:
+
+```sh
+samples/wifi/build_zenoh_peer.sh
+samples/wifi/build_esp32.sh --rmw zenoh_pico --role sub
+samples/wifi/build_esp32.sh --rmw zenoh_pico --role pub
+```
+
+The firmware connects to the desktop address in the ignored `build/wifi.env`;
+the runner can override it with `--peer-address`. The managed Zenoh router uses
+port 7447 and starts before the board is flashed:
+
+```sh
+samples/wifi/run_hardware_matrix.sh --rmw zenoh_pico \
+  --device /dev/ttyACM0 \
+  --peer-container ros2-zephyr-zenoh-peer:jazzy-0.2.5
+```
+
+Best Effort/Volatile and Reliable/Volatile pass on the physical ESP32-S3 in
+both directions against the pinned stock Jazzy peer. Each lane transferred the
+complete 18-sample schedule and ended with zero live ROS and middleware bytes.
+The fork's matched-count APIs are unsupported, so the publisher uses a bounded
+five-second discovery grace before sending.
+
+ROS graph acceptance and Transient Local are skipped. The fork's local graph
+APIs are unsupported, and its emitted liveliness metadata was not visible as a
+ROS graph to the stock peer. It also has no retained-history implementation.
+Reliable Keep Last still uses Zenoh's drop congestion policy, so the accepted
+exchange is interoperability evidence rather than proof of every ROS Reliable
+semantic. Exact revisions, patches, current validation, and the resource
+comparison are recorded in
+[the Zenoh-Pico integration note](../../docs/zenoh-pico.md).
+
+The accepted Reliable images use 745,876 bytes of linked flash and 263,704
+bytes of linked DRAM for the subscriber, and 668,948 bytes of flash and
+263,696 bytes of DRAM for the publisher. Both roles ran nine threads with
+43,520 reserved stack bytes and did not use the external allocation heap.
 
 ## ROS graph acceptance
 

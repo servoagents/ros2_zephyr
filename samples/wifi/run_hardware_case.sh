@@ -7,7 +7,9 @@ repository_root="$(cd "${sample_dir}/../.." && pwd)"
 ros_distro="${ROS2_ZEPHYR_ROS_DISTRO:-lyrical}"
 environment_file="${ROS2_ZEPHYR_ENV_FILE:-${repository_root}/build/zephyr-env-${ros_distro}.sh}"
 credentials_file="${ROS2_ZEPHYR_WIFI_ENV_FILE:-${repository_root}/build/wifi.env}"
-rmw_source="${ROS2_ZEPHYR_RMW_SOURCE:-${repository_root}/../rmw_cyclonedds_c}"
+rmw="cyclonedds_c"
+rmw_source="${ROS2_ZEPHYR_RMW_SOURCE:-}"
+rmw_revision_source=""
 role=""
 serial_device=""
 reliability="best_effort"
@@ -29,6 +31,7 @@ usage() {
 usage: $0 --role node|pub|sub|pubsub --device PATH [options]
 
 Options:
+  --rmw cyclonedds_c|zenoh_pico
   --reliability best_effort|reliable
   --durability volatile|transient_local
   --depth N
@@ -42,12 +45,17 @@ Options:
   --no-reset
 
 The node and pubsub graph roles require reliable/volatile/depth-5 images.
-Run this from a stock ROS 2 ${ros_distro} shell with rmw_cyclonedds_cpp.
+Run this from a stock ROS 2 shell with the matching desktop RMW installed.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --rmw)
+      [[ $# -ge 2 ]] || { usage; exit 2; }
+      rmw="$2"
+      shift 2
+      ;;
     --role)
       [[ $# -ge 2 ]] || { usage; exit 2; }
       role="$2"
@@ -121,9 +129,18 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "${rmw}" != "cyclonedds_c" && "${rmw}" != "zenoh_pico" ]]; then
+  usage
+  exit 2
+fi
 if [[ "${role}" != "node" && "${role}" != "pub" && "${role}" != "sub" &&
       "${role}" != "pubsub" ]]; then
   usage
+  exit 2
+fi
+if [[ "${rmw}" == "zenoh_pico" &&
+      ("${role}" == "node" || "${role}" == "pubsub") ]]; then
+  echo "rmw_zenoh_pico does not provide interoperable ROS graph discovery" >&2
   exit 2
 fi
 if [[ -z "${serial_device}" ]]; then
@@ -136,6 +153,10 @@ if [[ "${reliability}" != "best_effort" && "${reliability}" != "reliable" ]]; th
 fi
 if [[ "${durability}" != "volatile" && "${durability}" != "transient_local" ]]; then
   usage
+  exit 2
+fi
+if [[ "${rmw}" == "zenoh_pico" && "${durability}" == "transient_local" ]]; then
+  echo "rmw_zenoh_pico does not implement retained Transient Local history" >&2
   exit 2
 fi
 if [[ ! "${depth}" =~ ^[1-9][0-9]*$ ]] || ((10#${depth} > 2147483647)); then
@@ -175,18 +196,32 @@ peer_cyclonedds_uri=""
 if [[ -n "${peer_address}" ]]; then
   peer_cyclonedds_uri="<CycloneDDS><Domain><General><Interfaces><NetworkInterface address='${peer_address}' multicast='false'/></Interfaces><AllowMulticast>false</AllowMulticast></General></Domain></CycloneDDS>"
 fi
-if [[ "${build_image}" == true && ! -d "${rmw_source}/rmw_cyclonedds_c" ]]; then
-  echo "ROS2_ZEPHYR_RMW_SOURCE must name the rmw_cyclonedds_c repository" >&2
+if [[ -z "${rmw_source}" && "${rmw}" == "cyclonedds_c" ]]; then
+  rmw_source="${repository_root}/../rmw_cyclonedds_c"
+fi
+if [[ -n "${rmw_source}" ]]; then
+  rmw_revision_source="${rmw_source}"
+elif [[ "${rmw}" == "zenoh_pico" ]]; then
+  rmw_revision_source="${repository_root}/build/deps/${ros_distro}/target/src/fj-blanco/rmw_zenoh_pico"
+fi
+if [[ "${build_image}" == true && -n "${rmw_source}" &&
+      ! -d "${rmw_source}/rmw_${rmw}" ]]; then
+  echo "ROS2_ZEPHYR_RMW_SOURCE must name the rmw_${rmw} repository" >&2
   exit 2
 fi
 
 ros2_executable=""
+peer_rmw="rmw_cyclonedds_cpp"
+if [[ "${rmw}" == "zenoh_pico" ]]; then
+  peer_rmw="rmw_zenoh_cpp"
+fi
 if [[ -n "${peer_container}" ]]; then
   if ! command -v docker >/dev/null; then
     echo "docker is required by --peer-container" >&2
     exit 2
   fi
-  if ! docker run --rm --network host "${peer_container}" \
+  if ! docker run --rm --network host -e RMW_IMPLEMENTATION="${peer_rmw}" \
+      "${peer_container}" \
       python3 -c 'import rclpy, std_msgs' 2>/dev/null; then
     echo "${peer_container} cannot import stock ROS 2 rclpy/std_msgs" >&2
     exit 2
@@ -197,21 +232,17 @@ else
     echo "${peer_python} cannot import stock ROS 2 rclpy/std_msgs; run from a ROS shell" >&2
     exit 2
   fi
-  if [[ "${role}" == "pubsub" ]]; then
+  if [[ "${role}" == "pubsub" || "${rmw}" == "zenoh_pico" ]]; then
     ros2_executable="$(command -v ros2 || true)"
     if [[ -z "${ros2_executable}" ]]; then
-      echo "ros2 CLI is required for the outbound graph snapshot" >&2
+      echo "ros2 CLI is required for the Zenoh router or outbound graph snapshot" >&2
       exit 2
     fi
   fi
 fi
 
-profile="${role}-${reliability}-${durability}-depth-${depth}"
-if [[ "${role}" == "node" || "${role}" == "pubsub" ]]; then
-  build_dir="${repository_root}/build/${ros_distro}/wifi-esp32s3-graph-${role}"
-else
-  build_dir="${repository_root}/build/${ros_distro}/wifi-esp32s3-${profile}"
-fi
+profile="${rmw}-${role}-${reliability}-${durability}-depth-${depth}"
+build_dir="${repository_root}/build/${ros_distro}/wifi-esp32s3-${profile}"
 build_dir="${ROS2_ZEPHYR_WIFI_BUILD_DIR:-${build_dir}}"
 output_dir="${output_dir:-${repository_root}/results/${ros_distro}/esp32s3-hardware/${profile}}"
 mkdir -p "${output_dir}"
@@ -242,16 +273,20 @@ source_revision() {
 
 zephyr_source="$(bash -c 'source "$1"; printf "%s" "${ZEPHYR_BASE:-}"' \
   _ "${environment_file}")"
-printf 'SOURCE ros2_zephyr=%s rmw_cyclonedds_c=%s zephyr=%s\n' \
+printf 'SOURCE ros2_zephyr=%s rmw=%s rmw_revision=%s zephyr=%s\n' \
   "$(source_revision "${repository_root}")" \
-  "$(source_revision "${rmw_source}")" \
+  "${rmw}" \
+  "$(source_revision "${rmw_revision_source}")" \
   "$(source_revision "${zephyr_source}")" | tee -a "${summary_log}"
 
 if [[ "${build_image}" == true ]]; then
   echo "BUILD role=${role} reliability=${reliability} durability=${durability} depth=${depth}" |
     tee -a "${summary_log}"
-  ROS2_ZEPHYR_RMW_SOURCE="${rmw_source}" ROS2_ZEPHYR_WIFI_BUILD_DIR="${build_dir}" \
-    "${sample_dir}/build_esp32.sh" --role "${role}" --reliability "${reliability}" \
+  ROS2_ZEPHYR_RMW_SOURCE="${rmw_source}" \
+    ROS2_ZEPHYR_ZENOH_ROUTER_IPV4="${peer_address}" \
+    ROS2_ZEPHYR_WIFI_BUILD_DIR="${build_dir}" \
+    "${sample_dir}/build_esp32.sh" --rmw "${rmw}" --role "${role}" \
+    --reliability "${reliability}" \
     --durability "${durability}" --depth "${depth}" 2>&1 | tee "${build_log}"
   linked_flash="$(awk '$1 == "FLASH:" {value = $2} END {print value}' "${build_log}")"
   linked_dram="$(awk '$1 == "dram0_0_seg:" {value = $2} END {print value}' "${build_log}")"
@@ -276,6 +311,20 @@ if [[ -n "${requested_domain_id}" && "${requested_domain_id}" != "${domain_id}" 
   echo "ROS2_ZEPHYR_DOMAIN_ID=${requested_domain_id} does not match firmware domain ${domain_id}" >&2
   exit 2
 fi
+if [[ "${rmw}" == "zenoh_pico" ]]; then
+  router_ipv4="$(sed -n \
+    's/^ROS2_ZEPHYR_ZENOH_ROUTER_IPV4:STRING=//p' "${build_dir}/CMakeCache.txt")"
+  router_port="$(sed -n \
+    's/^ROS2_ZEPHYR_ZENOH_ROUTER_PORT:STRING=//p' "${build_dir}/CMakeCache.txt")"
+  if [[ -n "${peer_address}" && "${router_ipv4}" != "${peer_address}" ]]; then
+    echo "firmware router address ${router_ipv4:-unknown} does not match ${peer_address}" >&2
+    exit 2
+  fi
+  if [[ "${router_port}" != "7447" ]]; then
+    echo "the managed Zenoh router requires firmware port 7447; found ${router_port:-unknown}" >&2
+    exit 2
+  fi
+fi
 
 case "${role}" in
   node)
@@ -298,45 +347,88 @@ if [[ "${role}" == "pub" || "${role}" == "sub" ]]; then
 elif [[ "${role}" == "pubsub" ]]; then
   peer_args+=(--cycles 2)
 fi
+defer_peer=false
+if [[ "${rmw}" == "zenoh_pico" && "${role}" == "sub" ]]; then
+  peer_args+=(--skip-match)
+  defer_peer=true
+fi
 
 peer_pid=""
 capture_pid=""
 peer_container_name=""
+router_pid=""
+router_container_name=""
 cleanup_processes() {
   local pid
-  for pid in "${capture_pid}" "${peer_pid}"; do
+  for pid in "${capture_pid}" "${peer_pid}" "${router_pid}"; do
     if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
       kill -TERM "${pid}" 2>/dev/null || true
-      wait "${pid}" 2>/dev/null || true
     fi
   done
   if [[ -n "${peer_container_name}" ]]; then
     docker rm -f "${peer_container_name}" >/dev/null 2>&1 || true
   fi
+  if [[ -n "${router_container_name}" ]]; then
+    docker rm -f "${router_container_name}" >/dev/null 2>&1 || true
+  fi
+  for pid in "${capture_pid}" "${peer_pid}" "${router_pid}"; do
+    if [[ -n "${pid}" ]]; then
+      wait "${pid}" 2>/dev/null || true
+    fi
+  done
 }
 trap cleanup_processes EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ -n "${peer_container}" ]]; then
-  peer_container_name="ros2-zephyr-peer-$$"
-  docker run --rm --name "${peer_container_name}" --network host \
-    -v "${repository_root}:/workspace:ro" -w /workspace \
-    -e ROS_DOMAIN_ID="${domain_id}" -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
-    -e PYTHONUNBUFFERED=1 -e CYCLONEDDS_URI="${peer_cyclonedds_uri}" \
-    "${peer_container}" \
-    python3 samples/wifi/peer.py "${peer_args[@]}" >"${peer_log}" 2>&1 &
-else
-  env ROS_DOMAIN_ID="${domain_id}" RMW_IMPLEMENTATION=rmw_cyclonedds_cpp PYTHONUNBUFFERED=1 \
-    CYCLONEDDS_URI="${peer_cyclonedds_uri}" \
-    "${peer_python}" "${sample_dir}/peer.py" "${peer_args[@]}" >"${peer_log}" 2>&1 &
+router_log="${output_dir}/router.log"
+if [[ "${rmw}" == "zenoh_pico" ]]; then
+  if [[ -n "${peer_container}" ]]; then
+    router_container_name="ros2-zephyr-router-$$"
+    docker run --rm --name "${router_container_name}" --network host \
+      "${peer_container}" ros2 run rmw_zenoh_cpp rmw_zenohd \
+      >"${router_log}" 2>&1 &
+    router_pid=$!
+  else
+    env RMW_IMPLEMENTATION="${peer_rmw}" \
+      "${ros2_executable}" run rmw_zenoh_cpp rmw_zenohd \
+      >"${router_log}" 2>&1 &
+    router_pid=$!
+  fi
+  sleep 2
+  if ! kill -0 "${router_pid}" 2>/dev/null; then
+    cat "${router_log}" >&2
+    echo "Zenoh router did not start" >&2
+    exit 1
+  fi
 fi
-peer_pid=$!
+
+start_peer() {
+  if [[ -n "${peer_container}" ]]; then
+    peer_container_name="ros2-zephyr-peer-$$"
+    docker run --rm --name "${peer_container_name}" --network host \
+      -v "${repository_root}:/workspace:ro" -w /workspace \
+      -e ROS_DOMAIN_ID="${domain_id}" -e RMW_IMPLEMENTATION="${peer_rmw}" \
+      -e PYTHONUNBUFFERED=1 -e CYCLONEDDS_URI="${peer_cyclonedds_uri}" \
+      "${peer_container}" \
+      python3 samples/wifi/peer.py "${peer_args[@]}" >"${peer_log}" 2>&1 &
+  else
+    env ROS_DOMAIN_ID="${domain_id}" RMW_IMPLEMENTATION="${peer_rmw}" PYTHONUNBUFFERED=1 \
+      CYCLONEDDS_URI="${peer_cyclonedds_uri}" \
+      "${peer_python}" "${sample_dir}/peer.py" "${peer_args[@]}" >"${peer_log}" 2>&1 &
+  fi
+  peer_pid=$!
+}
+
+if [[ "${defer_peer}" == false ]]; then
+  start_peer
+fi
 
 if [[ "${flash_image}" == true ]]; then
   set +e
   ROS2_ZEPHYR_WIFI_BUILD_DIR="${build_dir}" \
-    "${sample_dir}/run_esp32.sh" --role "${role}" --device "${serial_device}" \
+    "${sample_dir}/run_esp32.sh" --rmw "${rmw}" --role "${role}" \
+    --device "${serial_device}" \
     --reliability "${reliability}" --durability "${durability}" --depth "${depth}" \
     --no-build >"${flash_log}" 2>&1
   flash_status=$?
@@ -364,6 +456,18 @@ fi
 "${capture_python}" "${sample_dir}/../loopback/capture_esp32.py" \
   "${capture_args[@]}" >"${device_log}" 2>&1 &
 capture_pid=$!
+
+if [[ "${defer_peer}" == true ]]; then
+  ready_deadline=$((SECONDS + 60))
+  while ! grep -Fq 'ROS2_ZEPHYR_READY role=sub ' "${device_log}"; do
+    if ! kill -0 "${capture_pid}" 2>/dev/null || ((SECONDS >= ready_deadline)); then
+      echo "device subscriber was not ready in time" >"${peer_log}"
+      exit 1
+    fi
+    sleep 0.2
+  done
+  start_peer
+fi
 
 cli_status=0
 if [[ "${role}" == "pubsub" ]]; then
@@ -394,10 +498,10 @@ if [[ "${role}" == "pubsub" ]]; then
     set +e
     if [[ -n "${peer_container}" ]]; then
       ros2_command=(docker run --rm --network host \
-        -e ROS_DOMAIN_ID="${domain_id}" -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+        -e ROS_DOMAIN_ID="${domain_id}" -e RMW_IMPLEMENTATION="${peer_rmw}" \
         -e CYCLONEDDS_URI="${cli_cyclonedds_uri}" "${peer_container}" ros2)
     else
-      ros2_command=(env ROS_DOMAIN_ID="${domain_id}" RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+      ros2_command=(env ROS_DOMAIN_ID="${domain_id}" RMW_IMPLEMENTATION="${peer_rmw}" \
         CYCLONEDDS_URI="${cli_cyclonedds_uri}" "${ros2_executable}")
     fi
     {

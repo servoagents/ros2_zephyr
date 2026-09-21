@@ -6,6 +6,7 @@ sample_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd "${sample_dir}/../.." && pwd)"
 ros_distro="${ROS2_ZEPHYR_ROS_DISTRO:-lyrical}"
 role="sub"
+rmw="cyclonedds_c"
 serial_device=""
 reliability="best_effort"
 durability="volatile"
@@ -14,13 +15,19 @@ build_image=true
 environment_file="${ROS2_ZEPHYR_ENV_FILE:-${repository_root}/build/zephyr-env-${ros_distro}.sh}"
 
 usage() {
-  echo "usage: $0 [--role node|pub|sub|pubsub] [--device PATH]" \
+  echo "usage: $0 [--rmw cyclonedds_c|zenoh_pico]" \
+    "[--role node|pub|sub|pubsub] [--device PATH]" \
     "[--reliability best_effort|reliable]" \
     "[--durability volatile|transient_local] [--depth N] [--no-build]" >&2
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --rmw)
+      [[ $# -ge 2 ]] || { usage; exit 2; }
+      rmw="$2"
+      shift 2
+      ;;
     --role)
       [[ $# -ge 2 ]] || { usage; exit 2; }
       role="$2"
@@ -61,6 +68,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "${rmw}" != "cyclonedds_c" && "${rmw}" != "zenoh_pico" ]]; then
+  usage
+  exit 2
+fi
 if [[ "${role}" != "node" && "${role}" != "pub" && "${role}" != "sub" &&
       "${role}" != "pubsub" ]]; then
   usage
@@ -80,13 +91,13 @@ if [[ ! "${depth}" =~ ^[1-9][0-9]*$ ]] || ((10#${depth} > 2147483647)); then
 fi
 
 if [[ "${build_image}" == true ]]; then
-  "${sample_dir}/build_esp32.sh" --role "${role}" --reliability "${reliability}" \
-    --durability "${durability}" --depth "${depth}"
+  "${sample_dir}/build_esp32.sh" --rmw "${rmw}" --role "${role}" \
+    --reliability "${reliability}" --durability "${durability}" --depth "${depth}"
 fi
 # shellcheck disable=SC1090
 source "${environment_file}"
 
-profile="${role}-${reliability}-${durability}-depth-${depth}"
+profile="${rmw}-${role}-${reliability}-${durability}-depth-${depth}"
 build_dir="${ROS2_ZEPHYR_WIFI_BUILD_DIR:-${repository_root}/build/${ros_distro}/wifi-esp32s3-${profile}}"
 flash_args=()
 [[ -z "${serial_device}" ]] || flash_args+=(--esp-device "${serial_device}")

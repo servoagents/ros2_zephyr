@@ -31,6 +31,15 @@ if [[ -n "${ROS2_ZEPHYR_RMW_CYCLONEDDS_C_SOURCE:-}" ]]; then
     "${ROS2_ZEPHYR_RMW_CYCLONEDDS_C_SOURCE}/" "${staged_rmw_source}/"
 fi
 
+for ignored_package in \
+  "${TARGET_SRC}/fj-blanco-rmw_zenoh_pico/rmw_zenoh_pico" \
+  "${TARGET_SRC}/micro_ros-micro_ros_msgs/micro_ros_msgs" \
+  "${TARGET_SRC}/micro_ros-rosidl_typesupport_microxrcedds/rosidl_typesupport_microxrcedds_c" \
+  "${TARGET_SRC}/micro_ros-rosidl_typesupport_microxrcedds/rosidl_typesupport_microxrcedds_cpp" \
+  "${TARGET_SRC}/micro_ros-rosidl_typesupport_microxrcedds/test"; do
+  [[ ! -d "${ignored_package}" ]] || touch "${ignored_package}/COLCON_IGNORE"
+done
+
 host_idlc_directory="$(dirname "${ROS2_ZEPHYR_HOST_IDLC}")"
 host_idlc_library_directory="$(cd "${host_idlc_directory}/../lib" && pwd)"
 export PATH="${host_idlc_directory}:${PATH}"

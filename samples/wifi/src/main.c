@@ -16,7 +16,11 @@
 #include <rcutils/types/string_array.h>
 #include <rmw/qos_profiles.h>
 #include <ros2_zephyr/allocator.h>
+#if defined(CONFIG_ROS2_ZEPHYR_RMW_ZENOH_PICO)
+#include <std_msgs/msg/detail/u_int32__rosidl_typesupport_microxrcedds_c.h>
+#else
 #include <std_msgs/msg/detail/u_int32__rosidl_typesupport_introspection_c.h>
+#endif
 #include <std_msgs/msg/u_int32.h>
 #include <zephyr/kernel.h>
 #include <zephyr/net/net_event.h>
@@ -30,6 +34,7 @@
 
 enum {
   MATCH_TIMEOUT_MS = 60000,
+  UNOBSERVABLE_MATCH_GRACE_MS = 5000,
   EXPECTED_SAMPLE_COUNT = 18,
   DESKTOP_TO_DEVICE_VALUE = 314159265U,
   DEVICE_TO_DESKTOP_VALUE = 271828182U,
@@ -101,8 +106,13 @@ static unsigned int expected_receive_count(void)
 
 static const rosidl_message_type_support_t *uint32_type_support(void)
 {
+#if defined(CONFIG_ROS2_ZEPHYR_RMW_ZENOH_PICO)
+  return ROSIDL_TYPESUPPORT_INTERFACE__MESSAGE_SYMBOL_NAME(rosidl_typesupport_microxrcedds_c,
+                                                           std_msgs, msg, UInt32)();
+#else
   return ROSIDL_TYPESUPPORT_INTERFACE__MESSAGE_SYMBOL_NAME(rosidl_typesupport_introspection_c,
                                                            std_msgs, msg, UInt32)();
+#endif
 }
 
 static bool check(rcl_ret_t result, const char *operation)
@@ -490,7 +500,15 @@ static int __attribute__((unused)) run_publisher(rcl_node_t *node)
   }
   const rmw_qos_profile_t *actual_qos = rcl_publisher_get_actual_qos(&publisher);
   if (!wifi_actual_qos_matches(actual_qos, &qos)) {
-    printf("ROS2_ZEPHYR_ERROR operation=publisher_actual_qos\n");
+    printf("ROS2_ZEPHYR_ERROR operation=publisher_actual_qos"
+           " actual_history=%d actual_depth=%zu actual_reliability=%d actual_durability=%d"
+           " requested_history=%d requested_depth=%zu requested_reliability=%d"
+           " requested_durability=%d\n",
+           actual_qos != NULL ? (int)actual_qos->history : -1,
+           actual_qos != NULL ? actual_qos->depth : 0U,
+           actual_qos != NULL ? (int)actual_qos->reliability : -1,
+           actual_qos != NULL ? (int)actual_qos->durability : -1, (int)qos.history, qos.depth,
+           (int)qos.reliability, (int)qos.durability);
     if (rcl_publisher_fini(&publisher, node) != RCL_RET_OK) {
       printf("ROS2_ZEPHYR_ERROR operation=publisher_fini\n");
     }
@@ -512,23 +530,36 @@ static int __attribute__((unused)) run_publisher(rcl_node_t *node)
          TRANSIENT_HISTORY_LAST_VALUE);
 #endif
   size_t matched = 0U;
+  bool match_count_supported = true;
   const int64_t discovery_start = k_uptime_get();
   printf("ROS2_ZEPHYR_READY role=pub domain=%d\n", CONFIG_ROS2_ZEPHYR_DOMAIN_ID);
   while (k_uptime_get() - discovery_start < MATCH_TIMEOUT_MS && matched == 0U) {
-    if (!check(rcl_publisher_get_subscription_count(&publisher, &matched),
-               "publisher_get_subscription_count")) {
+    const rcl_ret_t count_result =
+        rcl_publisher_get_subscription_count(&publisher, &matched);
+    if (count_result == RCL_RET_UNSUPPORTED) {
+      rcl_reset_error();
+      match_count_supported = false;
+      k_sleep(K_MSEC(500));
+      break;
+    }
+    if (!check(count_result, "publisher_get_subscription_count")) {
       goto cleanup;
     }
     k_sleep(K_MSEC(20));
   }
-  if (matched == 0U) {
+  if (match_count_supported && matched == 0U) {
     printf("ROS2_ZEPHYR_ERROR operation=publisher_match_timeout\n");
     goto cleanup;
   }
 
-  printf("ROS2_ZEPHYR_MATCH role=pub peers=%zu discovery_ms=%" PRId64 "\n", matched,
-         k_uptime_get() - discovery_start);
-  k_sleep(K_MSEC(500));
+  if (match_count_supported) {
+    printf("ROS2_ZEPHYR_MATCH role=pub peers=%zu discovery_ms=%" PRId64 "\n", matched,
+           k_uptime_get() - discovery_start);
+    k_sleep(K_MSEC(500));
+  } else {
+    printf("ROS2_ZEPHYR_MATCH role=pub peers=unknown discovery_ms=unavailable\n");
+    k_sleep(K_MSEC(UNOBSERVABLE_MATCH_GRACE_MS));
+  }
 #if defined(ROS2_ZEPHYR_WIFI_DURABILITY_transient_local)
   const std_msgs__msg__UInt32 live_message = {.data = TRANSIENT_LIVE_VALUE};
   if (!check(rcl_publish(&publisher, &live_message, NULL), "publish_live")) {
@@ -578,7 +609,15 @@ static int __attribute__((unused)) run_subscriber(rcl_node_t *node, rclc_support
   }
   const rmw_qos_profile_t *actual_qos = rcl_subscription_get_actual_qos(&subscription);
   if (!wifi_actual_qos_matches(actual_qos, &qos)) {
-    printf("ROS2_ZEPHYR_ERROR operation=subscription_actual_qos\n");
+    printf("ROS2_ZEPHYR_ERROR operation=subscription_actual_qos"
+           " actual_history=%d actual_depth=%zu actual_reliability=%d actual_durability=%d"
+           " requested_history=%d requested_depth=%zu requested_reliability=%d"
+           " requested_durability=%d\n",
+           actual_qos != NULL ? (int)actual_qos->history : -1,
+           actual_qos != NULL ? actual_qos->depth : 0U,
+           actual_qos != NULL ? (int)actual_qos->reliability : -1,
+           actual_qos != NULL ? (int)actual_qos->durability : -1, (int)qos.history, qos.depth,
+           (int)qos.reliability, (int)qos.durability);
     if (rcl_subscription_fini(&subscription, node) != RCL_RET_OK) {
       printf("ROS2_ZEPHYR_ERROR operation=subscription_fini\n");
     }
@@ -601,6 +640,7 @@ static int __attribute__((unused)) run_subscriber(rcl_node_t *node, rclc_support
 
   size_t matched = 0U;
   bool match_reported = false;
+  bool match_count_supported = true;
   const int64_t discovery_start = k_uptime_get();
   int64_t receive_deadline = discovery_start + MATCH_TIMEOUT_MS;
   printf("ROS2_ZEPHYR_READY role=sub domain=%d\n", CONFIG_ROS2_ZEPHYR_DOMAIN_ID);
@@ -610,9 +650,14 @@ static int __attribute__((unused)) run_subscriber(rcl_node_t *node, rclc_support
       check(spin_result, "spin_some");
       goto cleanup;
     }
-    if (!match_reported) {
-      if (!check(rcl_subscription_get_publisher_count(&subscription, &matched),
-                 "subscription_get_publisher_count")) {
+    if (!match_reported && match_count_supported) {
+      const rcl_ret_t count_result =
+          rcl_subscription_get_publisher_count(&subscription, &matched);
+      if (count_result == RCL_RET_UNSUPPORTED) {
+        rcl_reset_error();
+        match_count_supported = false;
+        printf("ROS2_ZEPHYR_MATCH role=sub peers=unknown discovery_ms=unavailable\n");
+      } else if (!check(count_result, "subscription_get_publisher_count")) {
         goto cleanup;
       }
       if (matched > 0U) {
@@ -675,15 +720,30 @@ int main(void)
       .state = ros2_zephyr_allocator_state(ROS2_ZEPHYR_ALLOCATION_ROS),
   };
   rclc_support_t support = {0};
+  rcl_init_options_t init_options = rcl_get_zero_initialized_init_options();
   rcl_node_t node = rcl_get_zero_initialized_node();
+  bool init_options_initialized = false;
   bool support_initialized = false;
   bool node_initialized = false;
   int result = 1;
 
-  if (!check(rclc_support_init(&support, 0, NULL, &allocator), "support_init")) {
+  if (!check(rcl_init_options_init(&init_options, allocator), "init_options_init")) {
+    goto cleanup;
+  }
+  init_options_initialized = true;
+  if (!check(rcl_init_options_set_domain_id(&init_options, CONFIG_ROS2_ZEPHYR_DOMAIN_ID),
+             "init_options_set_domain_id")) {
+    goto cleanup;
+  }
+  if (!check(rclc_support_init_with_options(&support, 0, NULL, &init_options, &allocator),
+             "support_init")) {
     goto cleanup;
   }
   support_initialized = true;
+  if (!check(rcl_init_options_fini(&init_options), "init_options_fini")) {
+    goto cleanup;
+  }
+  init_options_initialized = false;
   if (!check(rclc_node_init_default(&node, "ros2_zephyr_esp32s3", "", &support), "node_init")) {
     goto cleanup;
   }
@@ -705,6 +765,9 @@ cleanup:
     result = 1;
   }
   if (support_initialized && rclc_support_fini(&support) != RCL_RET_OK) {
+    result = 1;
+  }
+  if (init_options_initialized && rcl_init_options_fini(&init_options) != RCL_RET_OK) {
     result = 1;
   }
   if (rcutils_logging_shutdown() != RCUTILS_RET_OK) {

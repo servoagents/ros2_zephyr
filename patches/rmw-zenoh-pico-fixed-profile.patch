@@ -1,0 +1,199 @@
+diff --git a/rmw_zenoh_pico/CMakeLists.txt b/rmw_zenoh_pico/CMakeLists.txt
+index 5f75d98..5a1be85 100644
+--- a/rmw_zenoh_pico/CMakeLists.txt
++++ b/rmw_zenoh_pico/CMakeLists.txt
+@@ -109,6 +109,6 @@ add_library(${PROJECT_NAME}
+   ${RMW_ZENOH_PICO_SOURCES})
+ 
+-target_link_libraries(${PROJECT_NAME}
++target_link_libraries(${PROJECT_NAME} PUBLIC
+   microcdr
+ )
+ 
+@@ -115,9 +115,9 @@ target_link_libraries(${PROJECT_NAME}
+ # Type support lock-up mechanism
+ find_package(rosidl_typesupport_microxrcedds_c)
+ if(rosidl_typesupport_microxrcedds_c_FOUND)
+-  ament_target_dependencies(${PROJECT_NAME}
+-    "rosidl_typesupport_microxrcedds_c"
+-)
++  target_link_libraries(${PROJECT_NAME} PUBLIC
++    rosidl_typesupport_microxrcedds_c::rosidl_typesupport_microxrcedds_c
++  )
+   target_compile_definitions(${PROJECT_NAME}
+     PUBLIC
+       HAVE_C_TYPESUPPORT
+@@ -127,19 +127,19 @@ else()
+ endif()
+ 
+ if(rosidl_typesupport_microxrcedds_cpp_FOUND)
+-  ament_target_dependencies(${PROJECT_NAME}
+-    "rosidl_typesupport_microxrcedds_cpp"
+-)
++  target_link_libraries(${PROJECT_NAME} PUBLIC
++    rosidl_typesupport_microxrcedds_cpp::rosidl_typesupport_microxrcedds_cpp
++  )
+   target_compile_definitions(${PROJECT_NAME}
+     PUBLIC
+       HAVE_CPP_TYPESUPPORT
+-)
++  )
+ endif()
+ 
+-ament_target_dependencies(${PROJECT_NAME}
+-  "zenohpico"
+-  "rcutils"
+-  "rmw"
++target_link_libraries(${PROJECT_NAME} PUBLIC
++  zenohpico::lib
++  rcutils::rcutils
++  rmw::rmw
+ )
+ 
+ configure_rmw_library(${PROJECT_NAME})
+@@ -184,7 +184,5 @@ target_compile_options(${PROJECT_NAME}
+     $<$<C_COMPILER_ID:GNU>:-Wno-unused-function>
+     $<$<C_COMPILER_ID:GNU>:-Wno-pedantic>
+     $<$<C_COMPILER_ID:GNU>:$<$<VERSION_GREATER:$<C_COMPILER_VERSION>,8.1>:-Wcast-align=strict>>
+-    $<$<C_COMPILER_ID:GNU>:-g>
+-    $<$<C_COMPILER_ID:GNU>:-O0>
+     $<$<C_COMPILER_ID:MSVC>:/Wall>
+ )
+diff --git a/rmw_zenoh_pico/package.xml b/rmw_zenoh_pico/package.xml
+index ba433f0..4e4e5ee 100644
+--- a/rmw_zenoh_pico/package.xml
++++ b/rmw_zenoh_pico/package.xml
+@@ -21,7 +21,6 @@
+   <depend>rcutils</depend>
+   <depend>rmw</depend>
+   <depend>rosidl_typesupport_microxrcedds_c</depend>
+-  <depend>rosidl_typesupport_microxrcedds_cpp</depend>
+   <depend>micro_ros_msgs</depend>
+ 
+   <test_depend>ament_cmake_gtest</test_depend>
+diff --git a/rmw_zenoh_pico/src/rmw_init.c b/rmw_zenoh_pico/src/rmw_init.c
+index 2ec6265..09c71c2 100644
+--- a/rmw_zenoh_pico/src/rmw_init.c
++++ b/rmw_zenoh_pico/src/rmw_init.c
+@@ -221,10 +221,9 @@ rmw_init_options_init(rmw_init_options_t * init_options, rcutils_allocator_t all
+   init_options->instance_id		  = 0;
+   init_options->implementation_identifier = rmw_get_implementation_identifier();
+   init_options->allocator		  = allocator;
+-  init_options->enclave                   = "/";
++  init_options->enclave                   = NULL;
+   init_options->domain_id		  = 0;
+   init_options->security_options	  = rmw_get_default_security_options();
+-  init_options->localhost_only		  = RMW_LOCALHOST_ONLY_DEFAULT;
+ 
+   // This can be call before rmw_init()
+   ZenohPicoTransportParams *params = zenoh_pico_generate_param(NULL);
+@@ -293,6 +292,11 @@ rmw_init_options_fini(rmw_init_options_t * init_options)
+     init_options->impl = NULL;
+   }
+ 
++  if(init_options->enclave != NULL){
++    init_options->allocator.deallocate(init_options->enclave, init_options->allocator.state);
++    init_options->enclave = NULL;
++  }
++
+   return RMW_RET_OK;
+ }
+ 
+@@ -447,6 +451,7 @@ rmw_init(const rmw_init_options_t * options, rmw_context_t * context)
+     z_drop(z_config_move(&config));
+     return RMW_RET_ERROR;
+   }
++  z_drop(z_config_move(&config));
+ 
+   context->impl = (rmw_context_impl_t *)session;
+ 
+diff --git a/rmw_zenoh_pico/src/zenoh_pico/zenoh_pico_session.c b/rmw_zenoh_pico/src/zenoh_pico/zenoh_pico_session.c
+index 99fdb6f..525214a 100644
+--- a/rmw_zenoh_pico/src/zenoh_pico/zenoh_pico_session.c
++++ b/rmw_zenoh_pico/src/zenoh_pico/zenoh_pico_session.c
+@@ -33,7 +33,6 @@ ZenohPicoSession *zenoh_pico_generate_session(const z_loaned_config_t *config,
+     session,
+     "failed to allocate struct for the ZenohPicoSession",
+     return NULL);
+-  memset(session, 0, sizeof(ZenohPicoSession));
+ 
+   z_config_clone(&session->config, config);
+ 
+@@ -43,11 +42,9 @@ ZenohPicoSession *zenoh_pico_generate_session(const z_loaned_config_t *config,
+   }
+ 
+   session->graph_guard_condition.implementation_identifier = rmw_get_implementation_identifier();
+-  session->graph_guard_condition.data = zenoh_pico_guard_condition_data;
++  session->graph_guard_condition.data = zenoh_pico_guard_condition_data();
+ 
+   session->enable_session = false;
+ 
+-  ZenohPicoDataRefClone(session);
+-
+   return session;
+ }
+@@ -69,6 +66,8 @@ bool zenoh_pico_destroy_session(ZenohPicoSession *session)
+     z_drop(z_move(session->config));
+     z_drop(z_move(session->enclave));
+     z_drop(z_move(session->session));
++    z_mutex_drop(z_move(session->lock));
++    memset(session, 0, sizeof(ZenohPicoSession));
+   }
+ 
+   return true;
+diff --git a/rmw_zenoh_pico/src/rmw_publisher.c b/rmw_zenoh_pico/src/rmw_publisher.c
+index d3129c0..d6a32bf 100644
+--- a/rmw_zenoh_pico/src/rmw_publisher.c
++++ b/rmw_zenoh_pico/src/rmw_publisher.c
+@@ -405,6 +405,12 @@ rmw_publisher_get_actual_qos(
+   RMW_CHECK_ARGUMENT_FOR_NULL(publisher, RMW_RET_INVALID_ARGUMENT);
+   RMW_CHECK_ARGUMENT_FOR_NULL(qos, RMW_RET_INVALID_ARGUMENT);
+ 
++  RMW_CHECK_ARGUMENT_FOR_NULL(publisher->data, RMW_RET_INVALID_ARGUMENT);
++  RMW_CHECK_TYPE_IDENTIFIERS_MATCH(
++    publisher->implementation_identifier,
++    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION);
++  *qos = ((ZenohPicoPubData *)publisher->data)->adapted_qos_profile;
++
+   return RMW_RET_OK;
+ }
+ 
+diff --git a/rmw_zenoh_pico/src/rmw_subscription.c b/rmw_zenoh_pico/src/rmw_subscription.c
+index a1e3eb4..623d158 100644
+--- a/rmw_zenoh_pico/src/rmw_subscription.c
++++ b/rmw_zenoh_pico/src/rmw_subscription.c
+@@ -458,6 +458,12 @@ rmw_subscription_get_actual_qos(
+   RMW_CHECK_ARGUMENT_FOR_NULL(subscription, RMW_RET_INVALID_ARGUMENT);
+   RMW_CHECK_ARGUMENT_FOR_NULL(qos, RMW_RET_INVALID_ARGUMENT);
+ 
++  RMW_CHECK_ARGUMENT_FOR_NULL(subscription->data, RMW_RET_INVALID_ARGUMENT);
++  RMW_CHECK_TYPE_IDENTIFIERS_MATCH(
++    subscription->implementation_identifier,
++    return RMW_RET_INCORRECT_RMW_IMPLEMENTATION);
++  *qos = ((ZenohPicoSubData *)subscription->data)->adapted_qos_profile;
++
+   return RMW_RET_OK;
+ }
+ 
+diff --git a/rmw_zenoh_pico/src/rmw_event.c b/rmw_zenoh_pico/src/rmw_event.c
+index 93ed1c2..d4690ea 100644
+--- a/rmw_zenoh_pico/src/rmw_event.c
++++ b/rmw_zenoh_pico/src/rmw_event.c
+@@ -295,7 +295,7 @@ void data_callback_init(DataEventManager *data_callback)
+   data_callback->callback = NULL;
+   data_callback->user_data = NULL;
+   data_callback->unread_count = 0;
+-  memset(data_callback->event_status, 0, sizeof(EventStatus));
++  memset(data_callback->event_status, 0, sizeof(data_callback->event_status));
+ }
+ 
+ void data_callback_set(DataEventManager *data_callback,
+@@ -311,7 +311,7 @@ void data_callback_set(DataEventManager *data_callback,
+       data_callback->callback(data_callback->user_data,
+ 			      data_callback->unread_count);
+       data_callback->unread_count = 0;
+-      memset(data_callback->event_status, 0, sizeof(EventStatus));
++      memset(data_callback->event_status, 0, sizeof(data_callback->event_status));
+     }
+     data_callback->user_data = user_data;
+     data_callback->callback  = callback;

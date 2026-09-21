@@ -1,4 +1,16 @@
 repositories:
+  fj-blanco/rmw_zenoh_pico:
+    type: git
+    url: https://github.com/fj-blanco/rmw_zenoh_pico.git
+    version: f44b8aff801a3bfee7a34a64961d9570e92aeed2
+  micro_ros/micro_ros_msgs:
+    type: git
+    url: https://github.com/micro-ROS/micro_ros_msgs.git
+    version: 26ec108168dc9578bd5ac4486fb3c06e0ec7d0e2
+  micro_ros/rosidl_typesupport_microxrcedds:
+    type: git
+    url: https://github.com/micro-ROS/rosidl_typesupport_microxrcedds.git
+    version: 17cdb10ef114fb5959a3bc77681a1b69a9b904e2
   servoagents/rmw_cyclonedds_c:
     type: git
     url: https://github.com/servoagents/rmw_cyclonedds_c.git

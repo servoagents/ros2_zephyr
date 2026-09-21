@@ -21,7 +21,30 @@ config ROS2_ZEPHYR_RMW_CYCLONEDDS_C
     help
       Link rmw_cyclonedds_c and Cyclone DDS directly into the firmware.
 
+config ROS2_ZEPHYR_RMW_ZENOH_PICO
+    bool "Use rmw_zenoh_pico"
+    help
+      Link rmw_zenoh_pico and Zenoh-Pico directly into the firmware. The
+      client connects to a Zenoh router over TCP.
+
 endchoice
+
+config ROS2_ZEPHYR_ZENOH_ROUTER_IPV4
+    string "Zenoh router IPv4 address"
+    default "127.0.0.1"
+    depends on ROS2_ZEPHYR_RMW_ZENOH_PICO
+
+config ROS2_ZEPHYR_ZENOH_ROUTER_PORT
+    int "Zenoh router TCP port"
+    range 1 65535
+    default 7447
+    depends on ROS2_ZEPHYR_RMW_ZENOH_PICO
+
+config ROS2_ZEPHYR_ZENOH_MAX_LIVELINESS_LENGTH
+    int "Maximum Zenoh liveliness key expression length"
+    range 64 1024
+    default 256
+    depends on ROS2_ZEPHYR_RMW_ZENOH_PICO
 
 config ROS2_ZEPHYR_DOMAIN_ID
     int "ROS domain ID"

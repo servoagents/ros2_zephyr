@@ -4,10 +4,11 @@
 the normal `rclc`, `rcl`, and RMW APIs; middleware setup and allocator hooks
 belong to the selected backend.
 
-The current backend is selected with:
+Select a backend with one of these Kconfig fragments:
 
 ```text
 CONFIG_ROS2_ZEPHYR_RMW_CYCLONEDDS_C=y
+CONFIG_ROS2_ZEPHYR_RMW_ZENOH_PICO=y
 ```
 
 The Kconfig choice permits exactly one backend. Adding another backend means
@@ -20,24 +21,23 @@ middleware-named message packages to samples.
 
 | Capability | Cyclone DDS C | Zenoh-Pico |
 | --- | --- | --- |
-| Publisher/subscriber | yes | not integrated |
-| Best Effort | yes | to be measured |
-| Reliable | yes | to be measured |
-| Transient Local | yes | to be measured |
-| Finite Keep Last | yes | to be measured |
-| Fixed-size messages | yes | to be validated |
-| ROS graph outbound | yes | to be measured |
-| ROS graph inbound | bounded | to be measured |
+| Publisher/subscriber | yes | yes, physical ESP32-S3 |
+| Best Effort | yes | yes, Volatile |
+| Reliable | yes | 18-sample Volatile exchange passes without recovery |
+| Transient Local | yes | no retained-history implementation |
+| Finite Keep Last | yes | receive queue is bounded by the requested depth |
+| Fixed-size messages | yes | compile and link validated |
+| ROS graph outbound | yes | not interoperable with stock `rmw_zenoh_cpp` |
+| ROS graph inbound | bounded | not implemented by `rmw_zenoh_pico` |
 | Services | no | out of scope |
 | Actions | no | out of scope |
 
-The Zenoh work will use the local `rmw_zenoh_pico` fork. Revision
-`f44b8aff801a3bfee7a34a64961d9570e92aeed2` is the starting candidate because
-it contains the Zephyr module integration. The separate
-`prep/zenoh-pico-1.10.1` revision contains newer Zenoh-Pico compatibility work
-but does not contain that module layer. The next milestone will establish the
-ROS, Zenoh-Pico, router, and desktop `rmw_zenoh_cpp` version matrix before
-choosing or combining those branches.
+The Zenoh backend is fetched from the GitHub fork at revision
+`f44b8aff801a3bfee7a34a64961d9570e92aeed2`; sibling source trees are not used
+unless `ROS2_ZEPHYR_RMW_SOURCE` is set explicitly. Its pinned dependency and
+desktop-peer matrix is recorded in [the Zenoh-Pico integration note](zenoh-pico.md).
+Measured ESP32-S3 resource use is compared in
+[RMW resource comparison](rmw-resource-comparison.md).
 
 Unsupported entries are left explicit. The two transports need not implement
 the same mechanism, but they must be described in terms of observable ROS

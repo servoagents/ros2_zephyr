@@ -18,5 +18,19 @@ ordinary C sequence implementation used by the fixed-size Zephyr profile.
 buffer dependency optional for introspection metadata; buffer-annotated fields
 remain outside the supported profile.
 
+`rmw-zenoh-pico-fixed-profile.patch` is applied only to the staged GitHub
+source. It replaces removed ament dependency macros with imported targets,
+removes the obsolete Lyrical `localhost_only` field, selects C-only
+typesupport, and lets the enclosing release profile choose optimization. It
+also fixes the graph guard pointer, preserves requested QoS reporting, bounds
+the zero-length event-status clear, gives the static session a balanced
+lifecycle, releases the successful-open configuration copy, and finalizes the
+RCL-owned enclave string.
+
+`zenoh-pico-zephyr-4.4.cmake` changes only the staged Zenoh-Pico copy. It uses
+the common middleware allocator, avoids destroying a copied Zephyr pthread
+attribute object that owns a static stack, and removes upstream optimization
+flags that would override the firmware profile.
+
 These patches modify upstream projects and remain subject to their respective
 upstream licenses.

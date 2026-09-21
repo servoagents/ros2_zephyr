@@ -1,4 +1,12 @@
 repositories:
+  eclipse/zenoh-pico:
+    type: git
+    url: https://github.com/eclipse-zenoh/zenoh-pico.git
+    version: e1ab223a28aaebb5dec1e70d98eab152332f777a
+  eprosima/micro-CDR:
+    type: git
+    url: https://github.com/eProsima/Micro-CDR.git
+    version: ed4fd513a24a53b93d548d342cb7aa0a18716f04
   eclipse/cyclonedds:
     type: git
     url: https://github.com/eclipse-cyclonedds/cyclonedds.git

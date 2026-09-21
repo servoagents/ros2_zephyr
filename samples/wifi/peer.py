@@ -283,7 +283,12 @@ def run_graph_inbound(timeout: float) -> int:
 
 
 def run_publisher(
-    node, timeout: float, reliability: str, durability: str, depth: int
+    node,
+    timeout: float,
+    reliability: str,
+    durability: str,
+    depth: int,
+    skip_match: bool,
 ) -> int:
     publisher = node.create_publisher(
         UInt32,
@@ -301,14 +306,17 @@ def run_publisher(
             flush=True,
         )
     started = time.monotonic()
-    if not wait_for_subscriber(node, publisher, timeout):
+    if not skip_match and not wait_for_subscriber(node, publisher, timeout):
         print("ROS2_ZEPHYR_PEER_ERROR role=pub reason=match_timeout", file=sys.stderr)
         return 1
 
-    print(
-        f"ROS2_ZEPHYR_PEER_MATCH role=pub discovery_ms="
-        f"{(time.monotonic() - started) * 1000:.3f}"
-    )
+    if skip_match:
+        print("ROS2_ZEPHYR_PEER_MATCH role=pub discovery_ms=unavailable")
+    else:
+        print(
+            f"ROS2_ZEPHYR_PEER_MATCH role=pub discovery_ms="
+            f"{(time.monotonic() - started) * 1000:.3f}"
+        )
     sent = 0
     recovery_message = UInt32(data=DESKTOP_TO_DEVICE_VALUE)
     if durability == "transient_local":
@@ -331,27 +339,32 @@ def run_publisher(
                 rclpy.spin_once(node, timeout_sec=interval)
 
     recovery_samples = 0
-    completion_deadline = time.monotonic() + 10.0
-    while (
-        publisher.get_subscription_count() > 0
-        and time.monotonic() < completion_deadline
-    ):
-        if (
-            durability == "volatile"
-            and reliability == "best_effort"
-            and recovery_samples < MAX_RECOVERY_SAMPLES
+    if skip_match:
+        drain_deadline = time.monotonic() + 2.0
+        while time.monotonic() < drain_deadline:
+            rclpy.spin_once(node, timeout_sec=0.1)
+    else:
+        completion_deadline = time.monotonic() + 10.0
+        while (
+            publisher.get_subscription_count() > 0
+            and time.monotonic() < completion_deadline
         ):
-            publisher.publish(recovery_message)
-            recovery_samples += 1
-        rclpy.spin_once(node, timeout_sec=0.1)
+            if (
+                durability == "volatile"
+                and reliability == "best_effort"
+                and recovery_samples < MAX_RECOVERY_SAMPLES
+            ):
+                publisher.publish(recovery_message)
+                recovery_samples += 1
+            rclpy.spin_once(node, timeout_sec=0.1)
 
-    if publisher.get_subscription_count() > 0:
-        print(
-            "ROS2_ZEPHYR_PEER_ERROR role=pub reason=device_did_not_complete "
-            f"scheduled={sent} recovery={recovery_samples}",
-            file=sys.stderr,
-        )
-        return 1
+        if publisher.get_subscription_count() > 0:
+            print(
+                "ROS2_ZEPHYR_PEER_ERROR role=pub reason=device_did_not_complete "
+                f"scheduled={sent} recovery={recovery_samples}",
+                file=sys.stderr,
+            )
+            return 1
 
     print(
         f"ROS2_ZEPHYR_PEER_PASS role=pub reliability={reliability} "
@@ -448,6 +461,11 @@ def main() -> int:
         default=1,
         help="complete outbound graph lifecycles to observe (graph-outbound only)",
     )
+    parser.add_argument(
+        "--skip-match",
+        action="store_true",
+        help="publish without graph-based endpoint matching",
+    )
     args = parser.parse_args()
     if args.depth <= 0:
         parser.error("--depth must be a positive integer")
@@ -468,7 +486,12 @@ def main() -> int:
     try:
         if args.role == "pub":
             return run_publisher(
-                node, args.timeout, args.reliability, args.durability, args.depth
+                node,
+                args.timeout,
+                args.reliability,
+                args.durability,
+                args.depth,
+                args.skip_match,
             )
         if args.role == "sub":
             return run_subscriber(

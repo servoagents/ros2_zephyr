@@ -12,7 +12,8 @@ Zephyr application
 ```
 
 The accepted backend is `rmw_cyclonedds_c`, for which the device is a DDS/RTPS
-participant. This path does not use Micro XRCE-DDS or a micro-ROS Agent.
+participant. A second, experimental backend builds `rmw_zenoh_pico` directly
+against Zenoh-Pico. Neither path uses a micro-ROS Agent.
 
 ## Status
 
@@ -27,6 +28,11 @@ The current release is an early, fixed-profile port:
 - bounded outbound and inbound ROS graph state is available in the development
   middleware profile;
 - exactly one RMW backend is selected by Kconfig and linked statically.
+
+The Zenoh-Pico backend now builds for `native_sim` and ESP32-S3 from exact
+GitHub pins. Best Effort/Volatile and Reliable/Volatile pass on the physical
+board in both directions; see
+[the Zenoh-Pico integration note](docs/zenoh-pico.md).
 
 The loopback sample has passed on an ESP32-S3-DevKitC using ROS 2 Lyrical. The
 same test also passes on `native_sim` with Lyrical and Kilted. On Zephyr 4.4.2,
@@ -110,11 +116,18 @@ Builds use one job by default to limit peak memory. Set
 
 ## Zephyr module use
 
-Enable the module in an application configuration:
+Enable the module and exactly one backend in an application configuration:
 
 ```text
 CONFIG_ROS2_ZEPHYR=y
 CONFIG_ROS2_ZEPHYR_RMW_CYCLONEDDS_C=y
+```
+
+or:
+
+```text
+CONFIG_ROS2_ZEPHYR=y
+CONFIG_ROS2_ZEPHYR_RMW_ZENOH_PICO=y
 ```
 
 The selected Cyclone backend requires paths to the prepared dependency tree,
@@ -166,6 +179,12 @@ The RMW and generated type support live in
 [`servoagents/rmw_cyclonedds_c`](https://github.com/servoagents/rmw_cyclonedds_c).
 This repository pins an exact middleware commit in each distribution-specific
 target manifest under `dependencies/`.
+
+The experimental Zenoh backend uses
+[`fj-blanco/rmw_zenoh_pico`](https://github.com/fj-blanco/rmw_zenoh_pico),
+Zenoh-Pico, and Micro-CDR at exact GitHub revisions in the Lyrical target and
+platform manifests. Its Volatile pub/sub hardware matrix and resource
+comparison are documented in [the Zenoh-Pico integration note](docs/zenoh-pico.md).
 
 ## License
 

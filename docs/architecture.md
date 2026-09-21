@@ -9,21 +9,23 @@ Common build logic prepares the ROS C stack, toolchain, allocator tracking,
 and application integration. Backend directories own their middleware source,
 ROSIDL type support, package set, compile definitions, compatibility patches,
 and narrow platform hooks. The common loopback interface package has no
-middleware dependency. The application does not initialize Cyclone or call
-DDS APIs.
+middleware dependency. The application does not initialize a middleware or
+call DDS or Zenoh APIs.
 
-Static linking controls code size; it is not the portability layer. The port
-works because Cyclone DDS uses its Zephyr `ddsrt` implementation, selected ROS
-packages avoid desktop-only runtime paths, and the module passes Zephyr's
-target toolchain and ABI into the ament/colcon sub-build.
+Static linking controls code size; it is not the portability layer. The
+Cyclone backend uses its Zephyr `ddsrt` implementation. The Zenoh backend uses
+Zenoh-Pico's Zephyr platform and Micro-CDR serialization. Both use the same
+selected ROS packages and the Zephyr target toolchain and ABI in the
+ament/colcon sub-build.
 
 The target workspace contains source from the following upstream projects:
 
 - ROS 2: `rclc`, RMW interfaces and selection, ROSIDL generators and runtime,
   logging interfaces, tracing stubs, and message definitions;
 - micro-ROS forks: `rcl`, `rcutils`, and the C typesupport dispatcher;
-- the selected middleware backend; currently Eclipse Cyclone DDS,
-  `rmw_cyclonedds_c`, and `rosidl_typesupport_cyclonedds_c`.
+- the selected middleware backend: either Eclipse Cyclone DDS with
+  `rmw_cyclonedds_c` and Cyclone C typesupport, or Zenoh-Pico with
+  `rmw_zenoh_pico`, Micro-CDR, and Micro XRCE-DDS C typesupport.
 
 Using micro-ROS-maintained source forks does not add XRCE transport or an
 Agent. The firmware does not include `rmw_microxrcedds` or the Micro XRCE-DDS
