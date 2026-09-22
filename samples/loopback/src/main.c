@@ -129,6 +129,9 @@ int main(void)
              "executor_add_subscription")) {
     goto cleanup;
   }
+  if (!check(rclc_executor_prepare(&executor), "executor_prepare")) {
+    goto cleanup;
+  }
 
   const ros2_zephyr_allocation_metrics_t ros_setup =
       ros2_zephyr_allocation_metrics(ROS2_ZEPHYR_ALLOCATION_ROS);
