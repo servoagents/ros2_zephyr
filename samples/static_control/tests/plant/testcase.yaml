@@ -1,0 +1,7 @@
+tests:
+  ros2_zephyr.static_control.plant:
+    platform_allow:
+      - native_sim/native/64
+    tags:
+      - ros2_zephyr
+      - static_control
