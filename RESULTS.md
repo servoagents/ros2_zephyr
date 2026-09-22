@@ -5,15 +5,19 @@ not to arbitrary ROS 2 or Zephyr applications.
 
 ## Revisions and setup
 
-- `ros2_zephyr`: `f35adf1ee55f1fe78bef0687750b190505e4e857`
-  (`v0.1.0-alpha.2`) plus the changes in this worktree
+- Baseline `ros2_zephyr`: `f35adf1ee55f1fe78bef0687750b190505e4e857`
+  (`v0.1.0-alpha.2`)
+- Candidate `ros2_zephyr`: `c305515bc9bb5663cf12857db76001444596dd29`
+  plus the changes in this worktree
 - Zephyr 4.4.0; Zephyr SDK 1.0.1
 - Cyclone DDS: `2f0d07d241f62f7121749b46721049e4dea5c58b`
 - RMW: the pinned Lyrical target source; no change was made to the separate
   `rmw_cyclonedds_c` worktree at
   `eaf8040f0cfbe729ad2bf6cbb38ce32af7b9e0fe`
 - Hardware: ESP32-S3 revision 0.2, 16 MiB PSRAM, USB Serial/JTAG
-- Peer: ROS 2 Humble at `192.168.0.16`, domain 95, Cyclone DDS
+- Control peer: ROS 2 Humble at `192.168.0.16`, domain 95, Cyclone DDS
+- QoS and graph peer: stock ROS 2 Kilted in
+  `ros2-zephyr-kilted-peer:phase1`
 - Control endpoints: Best Effort, Volatile, depth one
 
 Build directories contain the ELF, map, effective `.config` and build logs.
@@ -86,16 +90,16 @@ Zephyr's ESP32 region report for the final image is:
 | DROM | 886,452 B |
 
 These are absolute control-application sizes. They are not compared with the
-smaller UInt32 loopback sample and are not an optimization claim.
+smaller UInt32 loopback sample and are not an optimization claim. A matched
+baseline-library build is unavailable because the baseline tag predates the
+control sample and its message interfaces.
 
 ### Hardware behavior
 
 The ESP32-S3 accepted 1,459 commands during a 30 second, 50 Hz stimulus. It
 entered active state, expired the command after traffic stopped, disabled
 effort, and returned to active state after a fresh command. Out-of-range input
-increased the rejected count without changing the accepted sequence. A
-subsequent 180 second observation remained at zero skipped releases with a
-maximum scheduled-release lateness of 4 ms.
+increased the rejected count without changing the accepted sequence.
 
 The 2,048-byte control stack retained 1,664 unused bytes, so observed use was
 384 bytes. ROS steady allocation attempts remained zero after executor
@@ -103,20 +107,26 @@ preparation. DDS allocation attempts continued at about 120 per second; its
 high-water occupancy reached 97,308 bytes during the 50 Hz run. This is why the
 claim is limited to the application control path and prepared `rclc` executor.
 
-The final 1,017,524-byte image was rebuilt, flashed and exercised again. It
-accepted 143 commands from an eight-second 20 Hz publisher after discovery,
-then entered stale state. A desktop read returned sequence 400, zero effort,
-zero skipped releases and stale status. Maximum release lateness reached 4 ms.
+The first long run exposed four skipped releases and 45 ms maximum lateness.
+The ESP32 default main-thread priority was zero, so the ROS-owning main thread
+could preempt the priority-three control thread. The application now selects
+main-thread priority four and rejects higher-priority configurations at build
+time. Three 180 second, 50 Hz runs then completed with no skipped releases and
+no measured lateness at the one-millisecond timer resolution:
 
-Longer runs found a real limit. One observation reached control cycle 47,371
-with four skipped releases. A later final-image serial capture reported four
-skipped releases and 45 ms maximum lateness after the 143-command test. The
-earlier 180 second run had no skipped releases. The sample's fault policy works,
-but the ESP32 scheduling configuration is not sufficient for an indefinite
-zero-miss timing claim.
+| Run | Accepted commands | Skipped releases | Maximum lateness |
+|---|---:|---:|---:|
+| 1 | 8,955 | 0 | 0 us |
+| 2 | 8,999 | 0 | 0 us |
+| 3 | 8,330 | 0 | 0 us |
 
-The raw final-image serial capture is
-`build/measurements/hardware-final.log`.
+The Best Effort data path lost part of the third stimulus and correctly became
+stale; the local control schedule continued without a fault.
+
+The raw failing capture is `build/measurements/hardware-final.log`. Fixed-run
+captures are `build/measurements/hardware-priority-fix.log`,
+`build/measurements/hardware-priority-run2-active.log` and
+`build/measurements/hardware-priority-run3.log`.
 
 ### Behavior matrix
 
@@ -130,13 +140,22 @@ The raw final-image serial capture is
 | Injected overrun | Pass | ztest latches fault and counts skipped releases |
 | Peer loss and fresh-command recovery | Pass | Stale policy held locally; fresh sequence restored active state |
 | Physical Wi-Fi disconnect/reconnect | Not run | Peer traffic stopped, but the access point link was not forced down |
-| Initialization fault injection | Not run | Cleanup paths were reviewed; no injected allocation/network failure run |
+| Invalid DDS worker capacity | Pass | Values below five are rejected by Kconfig before build |
+| Initialization heap exhaustion | Fail | Cyclone aborts before `rcl` can return an error |
 | Existing nested fixed loopback | Pass | Three baseline and three candidate runs |
-| Existing full QoS/graph suites | Not run | Endpoint QoS was exercised; the wider repository suites were not rerun |
+| QoS matrix | Pass | Eight ESP32-S3 pub/sub cases against stock ROS 2 Kilted |
+| Outbound graph lifecycle | Pass | Two create/remove lifecycles and desktop CLI discovery |
+| Inbound graph lifecycle | Pass | Discovery, participant loss, restart and second loss |
 | ESP target build and flash | Pass | Final image hash verified by `esptool` |
 
 Plant ztest: 3 passed. Control-policy ztest: 3 passed. The latter covers burst,
 expiry, invalid input and injected overrun using the real control thread.
+
+QoS logs are under `build/measurements/wifi-current-qos-kilted/`. Graph logs
+are under `build/measurements/wifi-current-graph-kilted/`. A Humble graph peer
+was also tried but is not an accepted comparison: its graph message uses a
+24-byte GID while the Lyrical target uses 16 bytes. Data-topic communication
+with Humble remains supported and was used for the control stimulus.
 
 ### Known issues
 
@@ -144,9 +163,14 @@ Cyclone/Zephyr startup prints two existing filesystem mount errors and five
 `tid ... is in use` messages while DDS workers continue to run. The ESP32 Wi-Fi
 driver also reported two transient net-buffer allocation failures on some
 boots. The application recovered, but these warnings need upstream ownership
-work before stronger robustness claims. The skipped-release bursts in longer
-runs also need scheduling-load analysis. Repeated DDS allocations are
-the next measured runtime cost; they were not changed without a safe ownership
+work before stronger robustness claims.
+
+Cyclone's mandatory allocation path calls `abort()` on heap exhaustion. Its
+thread-creation failure path is also fatal, so configurations below the five
+mandatory workers are now rejected by Kconfig. Unexpected runtime resource
+failures still require error propagation inside Cyclone and were not hidden
+behind sample-specific fault injection. Repeated DDS allocations remain the
+next measured runtime cost; they were not changed without a safe ownership
 model.
 
 ## Retained changes
@@ -156,6 +180,8 @@ model.
 - Fixed command/state interfaces with direct generated Cyclone typesupport
 - A normal Zephyr control application with bounded snapshots, expiry and a
   latched overrun fault
+- Control priority above the ROS-owning thread, enforced at build time
+- Build-time rejection of insufficient Cyclone worker capacity
 - Native plant and control-policy tests
 - ESP32-S3 build, board configuration and reproducible resource reporting
 
@@ -177,6 +203,11 @@ export WIFI_PSK='your-password'
 export ROS_PEER_IP=192.168.0.16
 samples/static_control/build_esp32.sh
 west flash -d build/lyrical/static-control-esp32s3
+
+samples/wifi/run_hardware_matrix.sh --device /dev/ttyACM0 \
+  --rmw cyclonedds_c \
+  --peer-container ros2-zephyr-kilted-peer:phase1 \
+  --peer-address 192.168.0.16
 ```
 
 On the peer, build `shims/ros2_zephyr_test_msgs`, set `ROS_DOMAIN_ID=95`, then
