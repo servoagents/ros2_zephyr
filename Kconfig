@@ -53,9 +53,12 @@ config ROS2_ZEPHYR_DOMAIN_ID
 
 config ROS2_ZEPHYR_CYCLONEDDS_THREAD_COUNT
     int "Maximum Cyclone DDS worker threads"
-    range 1 16
+    range 5 16
     default 8 if ARCH_POSIX
     default 5
+    help
+      Cyclone DDS creates five mandatory workers in the supported Zephyr
+      configuration. Smaller values fail during participant creation.
 
 config ROS2_ZEPHYR_CYCLONEDDS_THREAD_STACK_SIZE
     int "Cyclone DDS worker stack size"
