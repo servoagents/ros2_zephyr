@@ -20,6 +20,9 @@ enum {
   CONTROL_STACK_SIZE = 2048,
 };
 
+BUILD_ASSERT(CONFIG_MAIN_THREAD_PRIORITY > CONTROL_THREAD_PRIORITY,
+             "the ROS-owning main thread must not preempt the control thread");
+
 struct command_snapshot {
   struct k_spinlock lock;
   struct static_control_command value;

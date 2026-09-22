@@ -10,6 +10,10 @@ The command is `ros2_zephyr_test_msgs/msg/ControlCommand` on
 `static_control/state`. Both endpoints use Best Effort, Volatile QoS at depth
 one.
 
+The control thread runs at priority three. The ROS-owning main thread runs at
+priority four; the build rejects a main-thread priority that could preempt the
+control thread.
+
 Outputs begin disabled. A command expires 250 ms after local receipt. Expiry
 sets the state to `STATUS_STALE` and disables effort until a fresh command is
 accepted. A missed release or output deadline sets a latched fault. Restarting
