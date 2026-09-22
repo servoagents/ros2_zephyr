@@ -11,6 +11,8 @@ rosidl_generate_interfaces(
   "msg/UInt32.msg"
   "msg/FixedArray.msg"
   "msg/NestedFixed.msg"
+  "msg/ControlCommand.msg"
+  "msg/ControlState.msg"
 )
 
 ament_export_dependencies(rosidl_default_runtime)
