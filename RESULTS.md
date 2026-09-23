@@ -7,7 +7,7 @@ not to arbitrary ROS 2 or Zephyr applications.
 
 - Baseline `ros2_zephyr`: `f35adf1ee55f1fe78bef0687750b190505e4e857`
   (`v0.1.0-alpha.2`)
-- Candidate `ros2_zephyr`: `c305515bc9bb5663cf12857db76001444596dd29`
+- Candidate `ros2_zephyr`: `d7f7bf44acd68e68dd1ac4363594402f2f32ac1d`
   plus the changes in this worktree
 - Zephyr 4.4.0; Zephyr SDK 1.0.1
 - Cyclone DDS: `2f0d07d241f62f7121749b46721049e4dea5c58b`
@@ -77,17 +77,17 @@ Final image sizes:
 | Target | text | data | bss | total |
 |---|---:|---:|---:|---:|
 | native_sim | 688,306 B | 53,623 B | 1,169,410 B | 1,911,339 B |
-| ESP32-S3 ELF | 908,136 B | 29,640 B | 998,876 B | 1,936,652 B |
+| ESP32-S3 ELF | 907,860 B | 29,592 B | 998,868 B | 1,936,320 B |
 
 Zephyr's ESP32 region report for the final image is:
 
 | Region | Used |
 |---|---:|
-| FLASH | 1,017,524 B |
+| FLASH | 1,017,912 B |
 | IRAM | 53,636 B |
-| DRAM | 261,376 B |
-| IROM | 688,164 B |
-| DROM | 886,452 B |
+| DRAM | 261,272 B |
+| IROM | 687,500 B |
+| DROM | 886,840 B |
 
 These are absolute control-application sizes. They are not compared with the
 smaller UInt32 loopback sample and are not an optimization claim. A matched
@@ -122,6 +122,13 @@ no measured lateness at the one-millisecond timer resolution:
 
 The Best Effort data path lost part of the third stimulus and correctly became
 stale; the local control schedule continued without a fault.
+
+The ESP32 configuration now leaves Wi-Fi association and DHCP readiness to the
+application instead of also running Zephyr's 30 second automatic network-init
+wait before `main()`. In the final USB capture the startup marker appeared
+immediately after the Zephyr banner, and the board reported network and ROS
+readiness after about 4.9 seconds. The previous configuration did not enter
+`main()` until about 35 seconds after boot.
 
 The raw failing capture is `build/measurements/hardware-final.log`. Fixed-run
 captures are `build/measurements/hardware-priority-fix.log`,
@@ -183,6 +190,7 @@ model.
 - Control priority above the ROS-owning thread, enforced at build time
 - Build-time rejection of insufficient Cyclone worker capacity
 - Native plant and control-policy tests
+- Immediate ESP32 application startup with one explicit Wi-Fi/DHCP owner
 - ESP32-S3 build, board configuration and reproducible resource reporting
 
 No scheduler, deployment language, compiler layer, runtime registry or generic

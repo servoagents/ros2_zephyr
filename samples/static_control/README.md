@@ -41,7 +41,8 @@ west flash -d build/lyrical/static-control-esp32s3
 ```
 
 The board files select USB Serial/JTAG, 32 MiB octal flash and 16 MiB PSRAM on
-the tested ESP32-S3-DevKitC.
+the tested ESP32-S3-DevKitC. The ESP32-S3 supports 2.4 GHz Wi-Fi only, so use a
+2.4 GHz SSID rather than a 5 GHz-only network.
 
 Build `shims/ros2_zephyr_test_msgs` in the desktop ROS workspace, select domain
 95, and use Best Effort when reading state:
