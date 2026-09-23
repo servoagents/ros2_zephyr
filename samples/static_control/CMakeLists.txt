@@ -2,6 +2,9 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/deployment.cmake")
+ros2_zephyr_compile_deployment("${CMAKE_CURRENT_SOURCE_DIR}/deployment.json")
+
 if(BOARD MATCHES "^esp32")
   foreach(required_variable WIFI_SSID WIFI_PSK ROS_PEER_IP)
     if("$ENV{${required_variable}}" STREQUAL "")
@@ -22,14 +25,12 @@ list(APPEND ZEPHYR_EXTRA_MODULES "${CMAKE_CURRENT_SOURCE_DIR}/../..")
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(ros2_zephyr_static_control C CXX)
 
-if(NOT CONFIG_ROS2_ZEPHYR_RMW_CYCLONEDDS_C)
-  message(FATAL_ERROR "static_control currently requires rmw_cyclonedds_c")
-endif()
 if(CONFIG_WIFI AND CONFIG_NET_CONFIG_AUTO_INIT)
   message(FATAL_ERROR "static_control owns Wi-Fi association and DHCP readiness")
 endif()
 
 target_sources(app PRIVATE src/main.c src/control.c src/plant.c)
+ros2_zephyr_add_generated_deployment(app)
 target_include_directories(app PRIVATE src)
 target_compile_options(app PRIVATE -Wall -Wextra -Werror)
 

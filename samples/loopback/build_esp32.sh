@@ -16,9 +16,18 @@ source "${environment_file}"
 
 build_dir="${ROS2_ZEPHYR_ESP32_BUILD_DIR:-${repository_root}/build/${ros_distro}/esp32}"
 deps_root="${ROS2_ZEPHYR_DEPS_ROOT:-${repository_root}/build/deps/${ros_distro}}"
+deployment_backend="${ROS2_ZEPHYR_DEPLOYMENT_BACKEND:-rmw_cyclonedds_c}"
 export CCACHE_DIR="${repository_root}/build/ccache"
 export CCACHE_TEMPDIR="${repository_root}/build/ccache-tmp"
 mkdir -p "${CCACHE_DIR}" "${CCACHE_TEMPDIR}"
+
+backend_args=()
+if [[ "${deployment_backend}" == "rmw_cyclonedds_c" ]]; then
+  backend_args+=(
+    "-DROS2_ZEPHYR_CYCLONEDDS_SOURCE=${ROS2_ZEPHYR_CYCLONEDDS_SOURCE}"
+    "-DROS2_ZEPHYR_HOST_IDLC=${ROS2_ZEPHYR_HOST_IDLC}"
+  )
+fi
 
 "${repository_root}/verify_sources.py" \
   "${ROS2_ZEPHYR_HOST_MANIFEST}" "${deps_root}/host/src"
@@ -34,8 +43,8 @@ ZEPHYR_BASE="${ZEPHYR_BASE}" cmake \
   -DCONF_FILE="${sample_dir}/prj_esp32.conf" \
   -DZEPHYR_MODULES="${ROS2_ZEPHYR_MODULES}" \
   -DROS2_ZEPHYR_DEPS_ROOT="${deps_root}" \
-  -DROS2_ZEPHYR_CYCLONEDDS_SOURCE="${ROS2_ZEPHYR_CYCLONEDDS_SOURCE}" \
-  -DROS2_ZEPHYR_HOST_IDLC="${ROS2_ZEPHYR_HOST_IDLC}" \
+  -DROS2_ZEPHYR_DEPLOYMENT_BACKEND="${deployment_backend}" \
+  "${backend_args[@]}" \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build "${build_dir}" --parallel "${ROS2_ZEPHYR_BUILD_JOBS:-1}"
 

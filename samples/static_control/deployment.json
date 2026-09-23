@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "name": "static_control",
+  "domain_id": 95,
+  "node": {
+    "name": "static_control",
+    "namespace": ""
+  },
+  "rmw": ["rmw_cyclonedds_c", "rmw_zenoh_pico"],
+  "message_profile": "fixed_size",
+  "graph": {
+    "outbound": false,
+    "inbound": false,
+    "api": []
+  },
+  "endpoints": [
+    {
+      "id": "command",
+      "kind": "subscription",
+      "topic": "static_control/command",
+      "type": "ros2_zephyr_test_msgs/msg/ControlCommand",
+      "callback": "command_callback",
+      "qos": {
+        "reliability": "best_effort",
+        "durability": "volatile",
+        "history": "keep_last",
+        "depth": 1
+      },
+      "lifetime": "fixed_startup"
+    },
+    {
+      "id": "state",
+      "kind": "publisher",
+      "topic": "static_control/state",
+      "type": "ros2_zephyr_test_msgs/msg/ControlState",
+      "qos": {
+        "reliability": "best_effort",
+        "durability": "volatile",
+        "history": "keep_last",
+        "depth": 1
+      },
+      "lifetime": "fixed_startup"
+    }
+  ]
+}

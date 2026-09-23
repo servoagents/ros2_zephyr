@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "backend": "rmw_zenoh_pico",
+  "message_profiles": ["fixed_size"],
+  "qos": {
+    "reliability": ["best_effort", "reliable"],
+    "durability": ["volatile"],
+    "history": ["keep_last"],
+    "depth": {"minimum": 1, "maximum": 32}
+  },
+  "graph": {"outbound": false, "inbound": false, "api": []},
+  "endpoint_lifetime": ["fixed_startup"],
+  "services": false,
+  "actions": false,
+  "runtime_allocation": {
+    "ros_after_executor_prepare": false,
+    "middleware_after_executor_prepare": true
+  },
+  "workers": {"minimum": 1, "configuration": "Zenoh-Pico task profile"},
+  "peer_compatibility": ["pinned Jazzy rmw_zenoh_cpp through a Zenoh router"],
+  "reconnection": "session reconnect is supported; ROS graph exchange is not",
+  "qualifications": [
+    "Reliable/Volatile passed the bounded hardware matrix; drop congestion policy does not prove every ROS Reliable delivery semantic"
+  ]
+}

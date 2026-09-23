@@ -10,13 +10,7 @@
 #include <rclc/executor.h>
 #include <rclc/rclc.h>
 #include <rcutils/logging.h>
-#include <rmw/qos_profiles.h>
 #include <ros2_zephyr/allocator.h>
-#include <ros2_zephyr_test_msgs/msg/control_command.h>
-#include <ros2_zephyr_test_msgs/msg/control_state.h>
-#include <ros2_zephyr_test_msgs/msg/detail/control_command__rosidl_typesupport_cyclonedds_c.h>
-#include <ros2_zephyr_test_msgs/msg/detail/control_state__rosidl_typesupport_cyclonedds_c.h>
-#include <rosidl_typesupport_interface/macros.h>
 #include <zephyr/kernel.h>
 #ifdef CONFIG_WIFI
 #include <string.h>
@@ -31,6 +25,7 @@
 #endif
 
 #include "control.h"
+#include "generated_ros_init.h"
 
 enum {
   ROS_SPIN_TIMEOUT_MS = 20,
@@ -52,19 +47,7 @@ static bool check(rcl_ret_t result, const char *operation)
   return false;
 }
 
-static const rosidl_message_type_support_t *command_type_support(void)
-{
-  return ROSIDL_TYPESUPPORT_INTERFACE__MESSAGE_SYMBOL_NAME(
-      rosidl_typesupport_cyclonedds_c, ros2_zephyr_test_msgs, msg, ControlCommand)();
-}
-
-static const rosidl_message_type_support_t *state_type_support(void)
-{
-  return ROSIDL_TYPESUPPORT_INTERFACE__MESSAGE_SYMBOL_NAME(
-      rosidl_typesupport_cyclonedds_c, ros2_zephyr_test_msgs, msg, ControlState)();
-}
-
-static void command_callback(const void *message)
+void command_callback(const void *message)
 {
   const ros2_zephyr_test_msgs__msg__ControlCommand *ros_command = message;
   const struct static_control_command command = {
@@ -229,16 +212,9 @@ int main(void)
       .state = ros2_zephyr_allocator_state(ROS2_ZEPHYR_ALLOCATION_ROS),
   };
   rclc_support_t support = {0};
-  rcl_node_t node = rcl_get_zero_initialized_node();
-  rcl_subscription_t subscription = rcl_get_zero_initialized_subscription();
-  rcl_publisher_t publisher = rcl_get_zero_initialized_publisher();
-  rclc_executor_t executor = rclc_executor_get_zero_initialized_executor();
-  ros2_zephyr_test_msgs__msg__ControlCommand command_message = {0};
+  ros2z_deployment_context_t deployment = {0};
   bool support_initialized = false;
-  bool node_initialized = false;
-  bool subscription_initialized = false;
-  bool publisher_initialized = false;
-  bool executor_initialized = false;
+  bool deployment_initialized = false;
   bool control_started = false;
   int result = 1;
 
@@ -246,36 +222,10 @@ int main(void)
     goto cleanup;
   }
   support_initialized = true;
-  if (!check(rclc_node_init_default(&node, "static_control", "", &support), "node_init")) {
+  if (!check(ros2z_deployment_init(&deployment, &support, &allocator), "deployment_init")) {
     goto cleanup;
   }
-  node_initialized = true;
-  rmw_qos_profile_t command_qos = rmw_qos_profile_sensor_data;
-  command_qos.depth = 1U;
-  if (!check(rclc_subscription_init(&subscription, &node, command_type_support(),
-                                    "static_control/command", &command_qos),
-             "subscription_init")) {
-    goto cleanup;
-  }
-  subscription_initialized = true;
-  rmw_qos_profile_t state_qos = rmw_qos_profile_sensor_data;
-  state_qos.depth = 1U;
-  if (!check(rclc_publisher_init(&publisher, &node, state_type_support(), "static_control/state",
-                                 &state_qos),
-             "publisher_init")) {
-    goto cleanup;
-  }
-  publisher_initialized = true;
-  if (!check(rclc_executor_init(&executor, &support.context, 1U, &allocator), "executor_init")) {
-    goto cleanup;
-  }
-  executor_initialized = true;
-  if (!check(rclc_executor_add_subscription(&executor, &subscription, &command_message,
-                                            command_callback, ON_NEW_DATA),
-             "executor_add_subscription") ||
-      !check(rclc_executor_prepare(&executor), "executor_prepare")) {
-    goto cleanup;
-  }
+  deployment_initialized = true;
   if (!static_control_start()) {
     printf("STATIC_CONTROL_ERROR operation=control_start\n");
     goto cleanup;
@@ -296,7 +246,8 @@ int main(void)
   int64_t next_report_ms = next_telemetry_ms + REPORT_PERIOD_MS;
   uint8_t previous_status = UINT8_MAX;
   for (;;) {
-    const rcl_ret_t spin = rclc_executor_spin_some(&executor, RCL_MS_TO_NS(ROS_SPIN_TIMEOUT_MS));
+    const rcl_ret_t spin =
+        rclc_executor_spin_some(&deployment.executor, RCL_MS_TO_NS(ROS_SPIN_TIMEOUT_MS));
     if (spin != RCL_RET_OK && spin != RCL_RET_TIMEOUT) {
       (void)check(spin, "spin_some");
       k_sleep(K_MSEC(ROS_SPIN_TIMEOUT_MS));
@@ -314,7 +265,7 @@ int main(void)
           .skipped_releases = state.skipped_releases,
           .status = state.status,
       };
-      const rcl_ret_t publish = rcl_publish(&publisher, &ros_state, NULL);
+      const rcl_ret_t publish = rcl_publish(&deployment.publisher_state, &ros_state, NULL);
       if (publish != RCL_RET_OK) {
         (void)check(publish, "publish_state");
       }
@@ -355,16 +306,7 @@ cleanup:
   if (control_started) {
     static_control_stop();
   }
-  if (executor_initialized && rclc_executor_fini(&executor) != RCL_RET_OK) {
-    result = 1;
-  }
-  if (publisher_initialized && rcl_publisher_fini(&publisher, &node) != RCL_RET_OK) {
-    result = 1;
-  }
-  if (subscription_initialized && rcl_subscription_fini(&subscription, &node) != RCL_RET_OK) {
-    result = 1;
-  }
-  if (node_initialized && rcl_node_fini(&node) != RCL_RET_OK) {
+  if (deployment_initialized && ros2z_deployment_fini(&deployment) != RCL_RET_OK) {
     result = 1;
   }
   if (support_initialized && rclc_support_fini(&support) != RCL_RET_OK) {

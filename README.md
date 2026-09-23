@@ -55,6 +55,9 @@ The graph hardware procedure and its explicit acceptance boundary are recorded
 in [the graph acceptance note](docs/graph-acceptance.md).
 The RMW selection boundary and backend capability table are recorded in
 [the backend profile](docs/rmw-backends.md).
+The fixed endpoint description, generated build artifacts, and rejection
+rules are documented in
+[the deployment compiler guide](docs/deployment-compiler.md).
 
 ## Prerequisites
 

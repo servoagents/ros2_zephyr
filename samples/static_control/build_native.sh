@@ -16,10 +16,19 @@ source "${environment_file}"
 
 build_dir="${ROS2_ZEPHYR_STATIC_CONTROL_BUILD_DIR:-${repository_root}/build/${ros_distro}/static-control-native}"
 deps_root="${ROS2_ZEPHYR_DEPS_ROOT:-${repository_root}/build/deps/${ros_distro}}"
+deployment_backend="${ROS2_ZEPHYR_DEPLOYMENT_BACKEND:-rmw_cyclonedds_c}"
 extra_conf_file="${ROS2_ZEPHYR_STATIC_CONTROL_EXTRA_CONF_FILE:-}"
 export CCACHE_DIR="${repository_root}/build/ccache"
 export CCACHE_TEMPDIR="${repository_root}/build/ccache-tmp"
 mkdir -p "${CCACHE_DIR}" "${CCACHE_TEMPDIR}"
+
+backend_args=()
+if [[ "${deployment_backend}" == "rmw_cyclonedds_c" ]]; then
+  backend_args+=(
+    "-DROS2_ZEPHYR_CYCLONEDDS_SOURCE=${ROS2_ZEPHYR_CYCLONEDDS_SOURCE}"
+    "-DROS2_ZEPHYR_HOST_IDLC=${ROS2_ZEPHYR_HOST_IDLC}"
+  )
+fi
 
 "${repository_root}/verify_sources.py" "${ROS2_ZEPHYR_HOST_MANIFEST}" "${deps_root}/host/src"
 "${repository_root}/verify_sources.py" "${ROS2_ZEPHYR_TARGET_MANIFEST}" "${deps_root}/target/src"
@@ -34,8 +43,8 @@ ZEPHYR_BASE="${ZEPHYR_BASE}" cmake \
   -DEXTRA_CONF_FILE="${extra_conf_file}" \
   -DZEPHYR_MODULES="${ROS2_ZEPHYR_WORKSPACE}/modules/lib/picolibc" \
   -DROS2_ZEPHYR_DEPS_ROOT="${deps_root}" \
-  -DROS2_ZEPHYR_CYCLONEDDS_SOURCE="${ROS2_ZEPHYR_CYCLONEDDS_SOURCE}" \
-  -DROS2_ZEPHYR_HOST_IDLC="${ROS2_ZEPHYR_HOST_IDLC}" \
+  -DROS2_ZEPHYR_DEPLOYMENT_BACKEND="${deployment_backend}" \
+  "${backend_args[@]}" \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build "${build_dir}" --parallel "${ROS2_ZEPHYR_BUILD_JOBS:-1}"
 

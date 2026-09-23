@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "backend": "rmw_cyclonedds_c",
+  "message_profiles": ["fixed_size"],
+  "qos": {
+    "reliability": ["best_effort", "reliable"],
+    "durability": ["volatile", "transient_local"],
+    "history": ["keep_last"],
+    "depth": {"minimum": 1, "maximum": 32}
+  },
+  "graph": {
+    "outbound": true,
+    "inbound": true,
+    "api": [
+      "node_names",
+      "publishers_info_by_topic",
+      "subscriptions_info_by_topic",
+      "topic_names_and_types"
+    ]
+  },
+  "endpoint_lifetime": ["fixed_startup"],
+  "services": false,
+  "actions": false,
+  "runtime_allocation": {
+    "ros_after_executor_prepare": false,
+    "middleware_after_executor_prepare": true
+  },
+  "workers": {"minimum": 5, "configuration": "CONFIG_ROS2_ZEPHYR_CYCLONEDDS_THREAD_COUNT"},
+  "peer_compatibility": ["stock ROS 2 rmw_cyclonedds_cpp"],
+  "reconnection": "DDS discovery retries after interface recovery"
+}

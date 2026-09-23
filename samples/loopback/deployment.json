@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "name": "minimal_pubsub",
+  "domain_id": 95,
+  "node": {
+    "name": "ros2_zephyr_loopback",
+    "namespace": ""
+  },
+  "rmw": ["rmw_cyclonedds_c", "rmw_zenoh_pico"],
+  "message_profile": "fixed_size",
+  "graph": {
+    "outbound": false,
+    "inbound": false,
+    "api": []
+  },
+  "endpoints": [
+    {
+      "id": "outgoing",
+      "kind": "publisher",
+      "topic": "ros2_zephyr_loopback",
+      "type": "ros2_zephyr_test_msgs/msg/NestedFixed",
+      "qos": {
+        "reliability": "best_effort",
+        "durability": "volatile",
+        "history": "keep_last",
+        "depth": 5
+      },
+      "lifetime": "fixed_startup"
+    },
+    {
+      "id": "incoming",
+      "kind": "subscription",
+      "topic": "ros2_zephyr_loopback",
+      "type": "ros2_zephyr_test_msgs/msg/NestedFixed",
+      "callback": "subscription_callback",
+      "qos": {
+        "reliability": "best_effort",
+        "durability": "volatile",
+        "history": "keep_last",
+        "depth": 5
+      },
+      "lifetime": "fixed_startup"
+    }
+  ]
+}
