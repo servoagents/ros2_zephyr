@@ -44,6 +44,19 @@ The board files select USB Serial/JTAG, 32 MiB octal flash and 16 MiB PSRAM on
 the tested ESP32-S3-DevKitC. The ESP32-S3 supports 2.4 GHz Wi-Fi only, so use a
 2.4 GHz SSID rather than a 5 GHz-only network.
 
+For a hardware-only forced station disconnect/reconnect probe, use a separate
+build directory and the supplied extra configuration fragment:
+
+```sh
+export ROS2_ZEPHYR_STATIC_CONTROL_BUILD_DIR="$PWD/build/lyrical/static-control-reconnect"
+export ROS2_ZEPHYR_STATIC_CONTROL_EXTRA_CONF_FILE="$PWD/samples/static_control/prj_esp32_reconnect.conf"
+samples/static_control/build_esp32.sh
+west flash -d "$ROS2_ZEPHYR_STATIC_CONTROL_BUILD_DIR"
+```
+
+The probe starts ten seconds after ROS initialization, holds the Wi-Fi link
+down for five seconds, and reconnects. It is disabled in normal firmware.
+
 Build `shims/ros2_zephyr_test_msgs` in the desktop ROS workspace, select domain
 95, and use Best Effort when reading state:
 

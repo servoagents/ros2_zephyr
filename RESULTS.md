@@ -77,17 +77,17 @@ Final image sizes:
 | Target | text | data | bss | total |
 |---|---:|---:|---:|---:|
 | native_sim | 688,306 B | 53,623 B | 1,169,410 B | 1,911,339 B |
-| ESP32-S3 ELF | 907,860 B | 29,592 B | 998,868 B | 1,936,320 B |
+| ESP32-S3 ELF | 907,948 B | 29,616 B | 998,844 B | 1,936,408 B |
 
 Zephyr's ESP32 region report for the final image is:
 
 | Region | Used |
 |---|---:|
-| FLASH | 1,017,912 B |
+| FLASH | 1,017,920 B |
 | IRAM | 53,636 B |
-| DRAM | 261,272 B |
-| IROM | 687,500 B |
-| DROM | 886,840 B |
+| DRAM | 261,288 B |
+| IROM | 687,580 B |
+| DROM | 886,848 B |
 
 These are absolute control-application sizes. They are not compared with the
 smaller UInt32 loopback sample and are not an optimization claim. A matched
@@ -130,6 +130,13 @@ immediately after the Zephyr banner, and the board reported network and ROS
 readiness after about 4.9 seconds. The previous configuration did not enter
 `main()` until about 35 seconds after boot.
 
+An off-by-default hardware probe then forced the station interface down for
+five seconds and explicitly reassociated it. The controller changed from
+active to stale after command expiry, continued its 10 ms schedule with zero
+skipped releases, and returned to active when DDS traffic resumed after
+reassociation. This exercises station teardown and recovery without claiming
+that the access point itself was powered down.
+
 The raw failing capture is `build/measurements/hardware-final.log`. Fixed-run
 captures are `build/measurements/hardware-priority-fix.log`,
 `build/measurements/hardware-priority-run2-active.log` and
@@ -146,7 +153,8 @@ captures are `build/measurements/hardware-priority-fix.log`,
 | Command burst | Pass | ztest submits 1,000 commands; latest valid snapshot wins |
 | Injected overrun | Pass | ztest latches fault and counts skipped releases |
 | Peer loss and fresh-command recovery | Pass | Stale policy held locally; fresh sequence restored active state |
-| Physical Wi-Fi disconnect/reconnect | Not run | Peer traffic stopped, but the access point link was not forced down |
+| Forced station disconnect/reconnect | Pass | Five-second outage produced active, stale and active transitions with zero skipped releases |
+| Physical access-point loss/recovery | Not run | The access point was not powered down |
 | Invalid DDS worker capacity | Pass | Values below five are rejected by Kconfig before build |
 | Initialization heap exhaustion | Fail | Cyclone aborts before `rcl` can return an error |
 | Existing nested fixed loopback | Pass | Three baseline and three candidate runs |

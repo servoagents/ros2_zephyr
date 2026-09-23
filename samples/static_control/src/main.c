@@ -80,23 +80,39 @@ static void command_callback(const void *message)
 
 #ifdef CONFIG_WIFI
 static K_SEM_DEFINE(wifi_connected, 0, 1);
+static K_SEM_DEFINE(wifi_disconnected, 0, 1);
 static K_SEM_DEFINE(ipv4_ready, 0, 1);
 static struct net_mgmt_event_callback wifi_callback;
 static struct net_mgmt_event_callback ipv4_callback;
+
+static struct wifi_connect_req_params wifi_connect_params(void)
+{
+  return (struct wifi_connect_req_params){
+      .ssid = (const uint8_t *)ROS2_ZEPHYR_WIFI_SSID,
+      .ssid_length = strlen(ROS2_ZEPHYR_WIFI_SSID),
+      .psk = (const uint8_t *)ROS2_ZEPHYR_WIFI_PSK,
+      .psk_length = strlen(ROS2_ZEPHYR_WIFI_PSK),
+      .channel = WIFI_CHANNEL_ANY,
+      .security = WIFI_SECURITY_TYPE_PSK,
+  };
+}
 
 static void wifi_event_handler(struct net_mgmt_event_callback *callback, uint64_t event,
                                struct net_if *iface)
 {
   (void)iface;
-  if (event != NET_EVENT_WIFI_CONNECT_RESULT) {
+  const struct wifi_status *status = callback->info;
+  if (status == NULL || status->status != 0) {
+    const char *operation =
+        event == NET_EVENT_WIFI_DISCONNECT_RESULT ? "wifi_disconnect" : "wifi_connect";
+    printf("STATIC_CONTROL_ERROR operation=%s status=%d\n", operation,
+           status != NULL ? status->status : -1);
     return;
   }
-  const struct wifi_status *status = callback->info;
-  if (status != NULL && status->status == 0) {
+  if (event == NET_EVENT_WIFI_CONNECT_RESULT) {
     k_sem_give(&wifi_connected);
-  } else {
-    printf("STATIC_CONTROL_ERROR operation=wifi_connect status=%d\n",
-           status != NULL ? status->status : -1);
+  } else if (event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
+    k_sem_give(&wifi_disconnected);
   }
 }
 
@@ -113,16 +129,11 @@ static void ipv4_event_handler(struct net_mgmt_event_callback *callback, uint64_
 static bool connect_network(void)
 {
   struct net_if *iface = net_if_get_default();
-  struct wifi_connect_req_params params = {
-      .ssid = (const uint8_t *)ROS2_ZEPHYR_WIFI_SSID,
-      .ssid_length = strlen(ROS2_ZEPHYR_WIFI_SSID),
-      .psk = (const uint8_t *)ROS2_ZEPHYR_WIFI_PSK,
-      .psk_length = strlen(ROS2_ZEPHYR_WIFI_PSK),
-      .channel = WIFI_CHANNEL_ANY,
-      .security = WIFI_SECURITY_TYPE_PSK,
-  };
+  struct wifi_connect_req_params params = wifi_connect_params();
 
-  net_mgmt_init_event_callback(&wifi_callback, wifi_event_handler, NET_EVENT_WIFI_CONNECT_RESULT);
+  net_mgmt_init_event_callback(&wifi_callback, wifi_event_handler,
+                               NET_EVENT_WIFI_CONNECT_RESULT |
+                                   NET_EVENT_WIFI_DISCONNECT_RESULT);
   net_mgmt_add_event_callback(&wifi_callback);
   net_mgmt_init_event_callback(&ipv4_callback, ipv4_event_handler, NET_EVENT_IPV4_ADDR_ADD);
   net_mgmt_add_event_callback(&ipv4_callback);
@@ -151,6 +162,53 @@ static bool connect_network(void)
   printf("STATIC_CONTROL_NETWORK_READY address=%s\n", address_text);
   return true;
 }
+
+#ifdef CONFIG_STATIC_CONTROL_WIFI_RECONNECT_PROBE
+enum {
+  WIFI_RECONNECT_PROBE_DELAY_MS = 10000,
+  WIFI_RECONNECT_PROBE_OFFLINE_MS = 5000,
+  WIFI_RECONNECT_PROBE_TIMEOUT_SECONDS = 30,
+  WIFI_RECONNECT_PROBE_STACK_SIZE = 2048,
+};
+
+K_THREAD_STACK_DEFINE(wifi_reconnect_probe_stack, WIFI_RECONNECT_PROBE_STACK_SIZE);
+static struct k_thread wifi_reconnect_probe_thread;
+
+static void wifi_reconnect_probe(void *first, void *second, void *third)
+{
+  (void)first;
+  (void)second;
+  (void)third;
+  struct net_if *iface = net_if_get_default();
+  struct wifi_connect_req_params params = wifi_connect_params();
+
+  k_sleep(K_MSEC(WIFI_RECONNECT_PROBE_DELAY_MS));
+  printf("STATIC_CONTROL_WIFI_PROBE phase=disconnecting\n");
+  if (net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0) != 0 ||
+      k_sem_take(&wifi_disconnected, K_SECONDS(WIFI_RECONNECT_PROBE_TIMEOUT_SECONDS)) != 0) {
+    printf("STATIC_CONTROL_ERROR operation=wifi_probe_disconnect\n");
+    return;
+  }
+  printf("STATIC_CONTROL_WIFI_PROBE phase=disconnected\n");
+
+  k_sleep(K_MSEC(WIFI_RECONNECT_PROBE_OFFLINE_MS));
+  if (net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &params, sizeof(params)) != 0 ||
+      k_sem_take(&wifi_connected, K_SECONDS(WIFI_RECONNECT_PROBE_TIMEOUT_SECONDS)) != 0 ||
+      k_sem_take(&ipv4_ready, K_SECONDS(WIFI_RECONNECT_PROBE_TIMEOUT_SECONDS)) != 0) {
+    printf("STATIC_CONTROL_ERROR operation=wifi_probe_reconnect\n");
+    return;
+  }
+  printf("STATIC_CONTROL_WIFI_PROBE phase=reconnected\n");
+}
+
+static void start_wifi_reconnect_probe(void)
+{
+  (void)k_thread_create(&wifi_reconnect_probe_thread, wifi_reconnect_probe_stack,
+                        K_THREAD_STACK_SIZEOF(wifi_reconnect_probe_stack), wifi_reconnect_probe,
+                        NULL, NULL, NULL, 5, 0, K_NO_WAIT);
+  k_thread_name_set(&wifi_reconnect_probe_thread, "wifi_reconnect_probe");
+}
+#endif
 #else
 static bool connect_network(void) { return true; }
 #endif
@@ -230,6 +288,9 @@ int main(void)
       ros2_zephyr_allocation_metrics(ROS2_ZEPHYR_ALLOCATION_MIDDLEWARE);
   printf("STATIC_CONTROL_READY ros_alloc_calls=%zu middleware_alloc_calls=%zu\n",
          ros_prepared.calls, middleware_prepared.calls);
+#ifdef CONFIG_STATIC_CONTROL_WIFI_RECONNECT_PROBE
+  start_wifi_reconnect_probe();
+#endif
 
   int64_t next_telemetry_ms = k_uptime_get();
   int64_t next_report_ms = next_telemetry_ms + REPORT_PERIOD_MS;
