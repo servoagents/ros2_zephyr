@@ -38,6 +38,10 @@ static allocation_state_t allocation_states[] = {
     {ROS2_ZEPHYR_ALLOCATION_MIDDLEWARE, MIDDLEWARE_EXTERNAL_ALLOCATION_MIN, {0}},
 };
 static struct k_spinlock allocation_metrics_lock;
+#if defined(CONFIG_ROS2_ZEPHYR_TEST_ROS_ALLOCATION_FAILURE_AT) && \
+    CONFIG_ROS2_ZEPHYR_TEST_ROS_ALLOCATION_FAILURE_AT > 0
+static size_t ros_allocation_attempts;
+#endif
 #if defined(CONFIG_ESP_SPIRAM)
 static K_MUTEX_DEFINE(external_heap_mutex);
 #endif
@@ -95,9 +99,29 @@ static void report_allocation_failure(allocation_state_t *state, size_t requeste
 #endif
 }
 
+static bool inject_allocation_failure(allocation_state_t *state)
+{
+#if defined(CONFIG_ROS2_ZEPHYR_TEST_ROS_ALLOCATION_FAILURE_AT) && \
+    CONFIG_ROS2_ZEPHYR_TEST_ROS_ALLOCATION_FAILURE_AT > 0
+  if (state->domain == ROS2_ZEPHYR_ALLOCATION_ROS) {
+    k_spinlock_key_t key = k_spin_lock(&allocation_metrics_lock);
+    const size_t attempt = ++ros_allocation_attempts;
+    k_spin_unlock(&allocation_metrics_lock, key);
+    return attempt == CONFIG_ROS2_ZEPHYR_TEST_ROS_ALLOCATION_FAILURE_AT;
+  }
+#else
+  (void)state;
+#endif
+  return false;
+}
+
 void *ros2_zephyr_allocate(size_t size, void *opaque_state)
 {
   allocation_state_t *state = opaque_state;
+  if (inject_allocation_failure(state)) {
+    report_allocation_failure(state, size);
+    return NULL;
+  }
   allocation_header_t *header = NULL;
 #if defined(CONFIG_ESP_SPIRAM)
   const bool external = size >= state->external_threshold;
@@ -153,6 +177,10 @@ void *ros2_zephyr_reallocate(void *pointer, size_t size, void *opaque_state)
     return ros2_zephyr_allocate(size, opaque_state);
   }
   allocation_state_t *state = opaque_state;
+  if (inject_allocation_failure(state)) {
+    report_allocation_failure(state, size);
+    return NULL;
+  }
   allocation_header_t *old_header = (allocation_header_t *)pointer - 1;
   const size_t old_size = old_header->size;
   const uint32_t old_pool = old_header->pool;

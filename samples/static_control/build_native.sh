@@ -16,6 +16,7 @@ source "${environment_file}"
 
 build_dir="${ROS2_ZEPHYR_STATIC_CONTROL_BUILD_DIR:-${repository_root}/build/${ros_distro}/static-control-native}"
 deps_root="${ROS2_ZEPHYR_DEPS_ROOT:-${repository_root}/build/deps/${ros_distro}}"
+extra_conf_file="${ROS2_ZEPHYR_STATIC_CONTROL_EXTRA_CONF_FILE:-}"
 export CCACHE_DIR="${repository_root}/build/ccache"
 export CCACHE_TEMPDIR="${repository_root}/build/ccache-tmp"
 mkdir -p "${CCACHE_DIR}" "${CCACHE_TEMPDIR}"
@@ -30,6 +31,7 @@ ZEPHYR_BASE="${ZEPHYR_BASE}" cmake \
   -G Ninja \
   -DPython3_EXECUTABLE="$(command -v python)" \
   -DBOARD=native_sim/native/64 \
+  -DEXTRA_CONF_FILE="${extra_conf_file}" \
   -DZEPHYR_MODULES="${ROS2_ZEPHYR_WORKSPACE}/modules/lib/picolibc" \
   -DROS2_ZEPHYR_DEPS_ROOT="${deps_root}" \
   -DROS2_ZEPHYR_CYCLONEDDS_SOURCE="${ROS2_ZEPHYR_CYCLONEDDS_SOURCE}" \

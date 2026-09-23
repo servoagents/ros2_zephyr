@@ -71,9 +71,15 @@ ros2 topic echo --qos-reliability best_effort /static_control/state
 
 The plant test has no ROS or Zephyr dependency. The policy test runs the real
 control thread and covers command bursts, expiry, invalid values and an
-injected overrun:
+injected overrun. The initialization test fails one ROS allocation during node
+creation and verifies that the application stays disabled and releases all
+tracked resources:
 
 ```sh
 west twister -T samples/static_control/tests/plant -p native_sim/native/64
 west twister -T samples/static_control/tests/control -p native_sim/native/64
+samples/static_control/test_init_failure.sh
 ```
+
+Allocation failure injection is available only on the native target and is
+disabled by default.

@@ -1,14 +1,14 @@
 # Prototype results
 
-Measured on 22 September 2026. These results apply to the configurations below,
-not to arbitrary ROS 2 or Zephyr applications.
+Measured on 22-23 September 2026. These results apply to the configurations
+below, not to arbitrary ROS 2 or Zephyr applications.
 
 ## Revisions and setup
 
 - Baseline `ros2_zephyr`: `f35adf1ee55f1fe78bef0687750b190505e4e857`
   (`v0.1.0-alpha.2`)
-- Candidate `ros2_zephyr`: `d7f7bf44acd68e68dd1ac4363594402f2f32ac1d`
-  plus the changes in this worktree
+- Candidate base `ros2_zephyr`: `42ed548d132fd151bffb7a06585a0d7af32c3180`,
+  plus the Phase 2 completion changes described here
 - Zephyr 4.4.0; Zephyr SDK 1.0.1
 - Cyclone DDS: `2f0d07d241f62f7121749b46721049e4dea5c58b`
 - RMW: the pinned Lyrical target source; no change was made to the separate
@@ -76,18 +76,18 @@ Final image sizes:
 
 | Target | text | data | bss | total |
 |---|---:|---:|---:|---:|
-| native_sim | 688,306 B | 53,623 B | 1,169,410 B | 1,911,339 B |
-| ESP32-S3 ELF | 907,948 B | 29,616 B | 998,844 B | 1,936,408 B |
+| native_sim | 678,643 B | 53,647 B | 1,169,410 B | 1,901,700 B |
+| ESP32-S3 ELF | 908,072 B | 29,616 B | 998,844 B | 1,936,532 B |
 
 Zephyr's ESP32 region report for the final image is:
 
 | Region | Used |
 |---|---:|
-| FLASH | 1,017,920 B |
+| FLASH | 1,017,988 B |
 | IRAM | 53,636 B |
 | DRAM | 261,288 B |
-| IROM | 687,580 B |
-| DROM | 886,848 B |
+| IROM | 687,636 B |
+| DROM | 886,916 B |
 
 These are absolute control-application sizes. They are not compared with the
 smaller UInt32 loopback sample and are not an optimization claim. A matched
@@ -137,6 +137,12 @@ skipped releases, and returned to active when DDS traffic resumed after
 reassociation. This exercises station teardown and recovery without claiming
 that the access point itself was powered down.
 
+An off-by-default native test fails the tenth ROS-domain allocation, during
+node initialization. The application reports the error, does not enable its
+control work, and unwinds to zero tracked live bytes in both the ROS and
+middleware domains. The injection counter and branch are compiled only into
+that test configuration.
+
 The raw failing capture is `build/measurements/hardware-final.log`. Fixed-run
 captures are `build/measurements/hardware-priority-fix.log`,
 `build/measurements/hardware-priority-run2-active.log` and
@@ -156,7 +162,8 @@ captures are `build/measurements/hardware-priority-fix.log`,
 | Forced station disconnect/reconnect | Pass | Five-second outage produced active, stale and active transitions with zero skipped releases |
 | Physical access-point loss/recovery | Not run | The access point was not powered down |
 | Invalid DDS worker capacity | Pass | Values below five are rejected by Kconfig before build |
-| Initialization heap exhaustion | Fail | Cyclone aborts before `rcl` can return an error |
+| Injected ROS initialization failure | Pass | Tenth ROS allocation fails in node initialization; no ready state and zero tracked live bytes after cleanup |
+| Cyclone heap exhaustion | Fail | Mandatory Cyclone allocation APIs abort before `rcl` can return an error |
 | Existing nested fixed loopback | Pass | Three baseline and three candidate runs |
 | QoS matrix | Pass | Eight ESP32-S3 pub/sub cases against stock ROS 2 Kilted |
 | Outbound graph lifecycle | Pass | Two create/remove lifecycles and desktop CLI discovery |
@@ -171,6 +178,11 @@ are under `build/measurements/wifi-current-graph-kilted/`. A Humble graph peer
 was also tried but is not an accepted comparison: its graph message uses a
 24-byte GID while the Lyrical target uses 16 bytes. Data-topic communication
 with Humble remains supported and was used for the control stimulus.
+
+The three implementation steps are complete for the prototype's supported
+scope. Physical access-point power cycling remains explicitly not run, and
+Cyclone's mandatory internal allocation failure remains a documented upstream
+limitation rather than an application cleanup result.
 
 ### Known issues
 
@@ -198,6 +210,8 @@ model.
 - Control priority above the ROS-owning thread, enforced at build time
 - Build-time rejection of insufficient Cyclone worker capacity
 - Native plant and control-policy tests
+- Native partial-initialization cleanup test with disabled-by-default fault
+  injection
 - Immediate ESP32 application startup with one explicit Wi-Fi/DHCP owner
 - ESP32-S3 build, board configuration and reproducible resource reporting
 
@@ -213,6 +227,7 @@ build/test-static-control/zephyr/zephyr.exe
 
 samples/static_control/build_native.sh
 build/lyrical/static-control-native/zephyr/zephyr.exe
+samples/static_control/test_init_failure.sh
 
 export WIFI_SSID='your-network'
 export WIFI_PSK='your-password'

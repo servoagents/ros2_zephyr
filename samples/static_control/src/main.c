@@ -373,5 +373,11 @@ cleanup:
   if (rcutils_logging_shutdown() != RCUTILS_RET_OK) {
     result = 1;
   }
+  const ros2_zephyr_allocation_metrics_t ros_final =
+      ros2_zephyr_allocation_metrics(ROS2_ZEPHYR_ALLOCATION_ROS);
+  const ros2_zephyr_allocation_metrics_t middleware_final =
+      ros2_zephyr_allocation_metrics(ROS2_ZEPHYR_ALLOCATION_MIDDLEWARE);
+  printf("STATIC_CONTROL_CLEANUP result=%d ros_live=%zu middleware_live=%zu\n", result,
+         ros_final.live_bytes, middleware_final.live_bytes);
   return result;
 }
