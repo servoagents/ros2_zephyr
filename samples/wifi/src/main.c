@@ -637,6 +637,9 @@ static int __attribute__((unused)) run_subscriber(rcl_node_t *node, rclc_support
              "executor_add_subscription")) {
     goto cleanup;
   }
+  if (!check(rclc_executor_prepare(&executor), "executor_prepare")) {
+    goto cleanup;
+  }
 
   size_t matched = 0U;
   bool match_reported = false;

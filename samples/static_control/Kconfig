@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+
+source "Kconfig.zephyr"
+
+config STATIC_CONTROL_WIFI_RECONNECT_PROBE
+	bool "Run the static-control Wi-Fi reconnect probe"
+	depends on WIFI
+	help
+	  Disconnect the station once after startup, keep it offline for five
+	  seconds, and reconnect with the configured credentials. This is a
+	  hardware validation mode and must remain disabled in normal firmware.
