@@ -40,6 +40,12 @@ samples/static_control/build_esp32.sh
 west flash -d build/lyrical/static-control-esp32s3
 ```
 
+The build writes `resource-plan.{json,md}` during configuration and
+`resource-report.{json,md}` after linking under
+`generated/deployment/`. A failed plan or report stops the build before the
+image can be flashed. The contract and accounting rules are documented in
+[`docs/resource-contracts.md`](../../docs/resource-contracts.md).
+
 The board files select USB Serial/JTAG, 32 MiB octal flash and 16 MiB PSRAM on
 the tested ESP32-S3-DevKitC. The ESP32-S3 supports 2.4 GHz Wi-Fi only, so use a
 2.4 GHz SSID rather than a 5 GHz-only network.

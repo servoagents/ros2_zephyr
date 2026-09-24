@@ -31,6 +31,10 @@ generated_ros2_zephyr.conf
 generated_features.cmake
 deployment-plan.json
 deployment-report.md
+resource-plan.json
+resource-plan.md
+resource-report.json
+resource-report.md
 ```
 
 `generated_ros_init.c` creates every endpoint once, gives the executor its
@@ -42,6 +46,13 @@ ROS cross-build. Fixed publisher/subscription deployments disable rclc action
 support while builds without a compiled deployment retain the upstream default.
 
 Endpoint definitions must not be repeated in handwritten source.
+
+The resource plan is produced during CMake configuration and rejects a
+deployment before compilation when declared capacities exceed the selected
+configuration. The resource report is produced after linking from the actual
+ELF, linker map, and Zephyr configuration. See the
+[resource contract](resource-contracts.md) for the schema and accounting
+rules.
 
 ## Validation boundary
 
@@ -64,8 +75,11 @@ therefore compile for Cyclone DDS and Zenoh-Pico from the same JSON files.
 Running a Zenoh-Pico image also requires its configured Zenoh router; endpoint
 generation and the router lifecycle are deliberately separate concerns.
 
+Deployment schema version 2 requires explicit endpoint, discovery, worker,
+application-reserve, and per-target flash/RAM bounds.
+
 Run the host checks with:
 
 ```sh
-python3 -m unittest discover -s tests -p 'test_compile_deployment.py'
+python3 -m unittest discover -s tests -p 'test_*.py'
 ```

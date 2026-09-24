@@ -146,6 +146,13 @@ Buffer-annotated fields remain unsupported.
 
 ### Resource sizing
 
+Generated deployments declare target-specific resource contracts. CMake
+rejects endpoint, discovery, worker, and known-RAM overcommit during
+configuration, then verifies the linked ELF and map against the declared flash
+and RAM budgets. The generated reports keep planned, linked, and runtime
+measurements separate. See [resource admission and post-link
+verification](docs/resource-contracts.md).
+
 Embedded builds reserve 8 KiB for each Cyclone DDS worker by default. During a
 direct-DDS ESP32-S3 test, external discovery used about 6 KiB while creating
 builtin proxy endpoints; the earlier 4,864-byte allocation overflowed. The

@@ -14,11 +14,26 @@ from typing import NoReturn
 IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 LOWER_IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
 MESSAGE_TYPE = re.compile(r"^([A-Za-z][A-Za-z0-9_]*)/msg/([A-Za-z][A-Za-z0-9_]*)$")
-ROOT_KEYS = {"schema_version", "name", "domain_id", "node", "rmw", "message_profile", "graph", "endpoints"}
+ROOT_KEYS = {
+    "schema_version",
+    "name",
+    "domain_id",
+    "node",
+    "rmw",
+    "message_profile",
+    "graph",
+    "endpoints",
+    "resources",
+}
 NODE_KEYS = {"name", "namespace"}
 GRAPH_KEYS = {"outbound", "inbound", "api"}
 ENDPOINT_KEYS = {"id", "kind", "topic", "type", "callback", "qos", "lifetime"}
 QOS_KEYS = {"reliability", "durability", "history", "depth"}
+RESOURCE_KEYS = {"local_endpoints", "remote", "workers", "application", "targets"}
+REMOTE_RESOURCE_KEYS = {"participants", "nodes", "endpoints"}
+WORKER_RESOURCE_KEYS = {"maximum"}
+APPLICATION_RESOURCE_KEYS = {"static_reserve_bytes"}
+TARGET_BUDGET_KEYS = {"flash_bytes", "ram_bytes"}
 SUPPORTED_BACKENDS = {"rmw_cyclonedds_c", "rmw_zenoh_pico"}
 
 
@@ -53,6 +68,12 @@ def require_string(value: object, path: str, pattern: re.Pattern[str] | None = N
     return value
 
 
+def require_integer(value: object, path: str, minimum: int = 0) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        reject("E_SCHEMA", f"{path} must be an integer greater than or equal to {minimum}")
+    return value
+
+
 def load_json(path: Path) -> dict[str, object]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -63,8 +84,8 @@ def load_json(path: Path) -> dict[str, object]:
 
 def validate_deployment(value: dict[str, object]) -> dict[str, object]:
     exact_keys(value, ROOT_KEYS, ROOT_KEYS, "deployment")
-    if value["schema_version"] != 1:
-        reject("E_SCHEMA_VERSION", "schema_version must be 1")
+    if value["schema_version"] != 2:
+        reject("E_SCHEMA_VERSION", "schema_version must be 2")
     require_string(value["name"], "name", LOWER_IDENTIFIER)
     domain = value["domain_id"]
     if isinstance(domain, bool) or not isinstance(domain, int) or not 0 <= domain <= 232:
@@ -132,6 +153,38 @@ def validate_deployment(value: dict[str, object]) -> dict[str, object]:
         depth = qos["depth"]
         if isinstance(depth, bool) or not isinstance(depth, int) or depth < 1:
             reject("E_SCHEMA", f"{path}.qos.depth must be a positive integer")
+
+    resources = require_object(value["resources"], "resources")
+    exact_keys(resources, RESOURCE_KEYS, RESOURCE_KEYS, "resources")
+    local_capacity = require_integer(resources["local_endpoints"], "resources.local_endpoints")
+    if len(endpoints) > local_capacity:
+        reject(
+            "E_RESOURCE_ENDPOINT_CAPACITY",
+            f"deployment declares {len(endpoints)} endpoints but resources.local_endpoints is {local_capacity}",
+        )
+
+    remote = require_object(resources["remote"], "resources.remote")
+    exact_keys(remote, REMOTE_RESOURCE_KEYS, REMOTE_RESOURCE_KEYS, "resources.remote")
+    for key in sorted(REMOTE_RESOURCE_KEYS):
+        require_integer(remote[key], f"resources.remote.{key}")
+
+    workers = require_object(resources["workers"], "resources.workers")
+    exact_keys(workers, WORKER_RESOURCE_KEYS, WORKER_RESOURCE_KEYS, "resources.workers")
+    require_integer(workers["maximum"], "resources.workers.maximum", 1)
+
+    application = require_object(resources["application"], "resources.application")
+    exact_keys(application, APPLICATION_RESOURCE_KEYS, APPLICATION_RESOURCE_KEYS, "resources.application")
+    require_integer(application["static_reserve_bytes"], "resources.application.static_reserve_bytes")
+
+    targets = require_object(resources["targets"], "resources.targets")
+    if not targets:
+        reject("E_SCHEMA", "resources.targets must contain at least one target budget")
+    for target, raw_budget in sorted(targets.items()):
+        require_string(target, "resources.targets key")
+        budget = require_object(raw_budget, f"resources.targets[{target!r}]")
+        exact_keys(budget, TARGET_BUDGET_KEYS, TARGET_BUDGET_KEYS, f"resources.targets[{target!r}]")
+        require_integer(budget["flash_bytes"], f"resources.targets[{target!r}].flash_bytes", 1)
+        require_integer(budget["ram_bytes"], f"resources.targets[{target!r}].ram_bytes", 1)
     return value
 
 
@@ -366,6 +419,9 @@ def generate_report(deployment: dict[str, object], capability: dict[str, object]
         f"- Message profile: `{deployment['message_profile']}`.",
         f"- Graph outbound/inbound required: `{deployment['graph']['outbound']}` / `{deployment['graph']['inbound']}`.",
         f"- ROS allocation after executor preparation promised by backend: `{not capability['runtime_allocation']['ros_after_executor_prepare']}`.",
+        f"- Local endpoint capacity: `{deployment['resources']['local_endpoints']}`.",
+        f"- Maximum middleware workers: `{deployment['resources']['workers']['maximum']}`.",
+        f"- Application static reserve: `{deployment['resources']['application']['static_reserve_bytes']}` bytes.",
         "",
     ])
     return "\n".join(lines)
@@ -376,7 +432,7 @@ def compile_deployment(deployment_path: Path, backend: str, capability_dir: Path
     capability = load_json(capability_dir / f"{backend}.json")
     validate_capabilities(deployment, capability, backend)
     output_dir.mkdir(parents=True, exist_ok=True)
-    plan = {"schema_version": 1, "backend": backend, "deployment": deployment, "capability": capability}
+    plan = {"schema_version": 2, "backend": backend, "deployment": deployment, "capability": capability}
     outputs = {
         "generated_ros_init.h": generate_header(deployment),
         "generated_ros_init.c": generate_source(deployment),

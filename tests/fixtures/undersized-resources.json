@@ -1,12 +1,12 @@
 {
   "schema_version": 2,
-  "name": "minimal_pubsub",
+  "name": "undersized_resources",
   "domain_id": 95,
   "node": {
-    "name": "ros2_zephyr_loopback",
+    "name": "undersized_resources",
     "namespace": ""
   },
-  "rmw": ["rmw_cyclonedds_c", "rmw_zenoh_pico"],
+  "rmw": ["rmw_cyclonedds_c"],
   "message_profile": "fixed_size",
   "graph": {
     "outbound": false,
@@ -14,30 +14,22 @@
     "api": []
   },
   "resources": {
-    "local_endpoints": 2,
+    "local_endpoints": 1,
     "remote": {
       "participants": 0,
       "nodes": 0,
       "endpoints": 0
     },
     "workers": {
-      "maximum": 8
+      "maximum": 5
     },
     "application": {
-      "static_reserve_bytes": 16384
+      "static_reserve_bytes": 0
     },
     "targets": {
       "native_sim/native/64": {
         "flash_bytes": 1000000,
         "ram_bytes": 1500000
-      },
-      "esp32_devkitc/esp32/procpu": {
-        "flash_bytes": 1500000,
-        "ram_bytes": 350000
-      },
-      "esp32s3_devkitc/esp32s3/procpu": {
-        "flash_bytes": 1500000,
-        "ram_bytes": 350000
       }
     }
   },
@@ -45,27 +37,27 @@
     {
       "id": "outgoing",
       "kind": "publisher",
-      "topic": "ros2_zephyr_loopback",
+      "topic": "undersized/outgoing",
       "type": "ros2_zephyr_test_msgs/msg/NestedFixed",
       "qos": {
         "reliability": "best_effort",
         "durability": "volatile",
         "history": "keep_last",
-        "depth": 5
+        "depth": 1
       },
       "lifetime": "fixed_startup"
     },
     {
       "id": "incoming",
       "kind": "subscription",
-      "topic": "ros2_zephyr_loopback",
+      "topic": "undersized/incoming",
       "type": "ros2_zephyr_test_msgs/msg/NestedFixed",
       "callback": "subscription_callback",
       "qos": {
         "reliability": "best_effort",
         "durability": "volatile",
         "history": "keep_last",
-        "depth": 5
+        "depth": 1
       },
       "lifetime": "fixed_startup"
     }

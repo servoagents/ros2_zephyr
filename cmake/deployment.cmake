@@ -39,6 +39,14 @@ function(ros2_zephyr_compile_deployment deployment_file)
       "${ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS}" CACHE INTERNAL
       "Whether the compiled deployment requires rclc actions" FORCE
   )
+  set(ROS2_ZEPHYR_DEPLOYMENT_PLAN
+      "${generated_directory}/deployment-plan.json" CACHE INTERNAL
+      "Validated deployment plan used for resource admission" FORCE
+  )
+  set(ROS2_ZEPHYR_DEPLOYMENT_OUTPUT_DIR
+      "${generated_directory}" CACHE INTERNAL
+      "Generated deployment output directory" FORCE
+  )
 
   set_property(
     DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS

@@ -21,6 +21,7 @@ SPEC.loader.exec_module(compiler)
 class DeploymentCompilerTest(unittest.TestCase):
     def setUp(self) -> None:
         self.deployment_path = REPOSITORY_ROOT / "samples" / "loopback" / "deployment.json"
+        self.undersized_path = REPOSITORY_ROOT / "tests" / "fixtures" / "undersized-resources.json"
         self.capabilities = REPOSITORY_ROOT / "capabilities"
         self.deployment = json.loads(self.deployment_path.read_text(encoding="utf-8"))
 
@@ -96,6 +97,11 @@ class DeploymentCompilerTest(unittest.TestCase):
         with self.assertRaises(compiler.DeploymentError) as caught:
             compiler.validate_deployment(deployment)
         self.assertEqual(caught.exception.code, "E_BACKEND_UNKNOWN")
+
+    def test_undersized_endpoint_contract_is_rejected_before_generation(self) -> None:
+        with self.assertRaises(compiler.DeploymentError) as caught:
+            compiler.validate_deployment(compiler.load_json(self.undersized_path))
+        self.assertEqual(caught.exception.code, "E_RESOURCE_ENDPOINT_CAPACITY")
 
 
 if __name__ == "__main__":

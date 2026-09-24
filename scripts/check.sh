@@ -18,6 +18,8 @@ done < <(find "${repository_root}" -path "${repository_root}/.git" -prune \
   -o -path "${repository_root}/build" -prune \
   -o -type f -name '*.py' -print0)
 
+python3 -m unittest discover -s "${repository_root}/tests" -p 'test_*.py'
+
 if command -v shellcheck >/dev/null; then
   find "${repository_root}" -path "${repository_root}/.git" -prune \
     -o -path "${repository_root}/build" -prune \

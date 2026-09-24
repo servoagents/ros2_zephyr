@@ -4,9 +4,9 @@
   "title": "ROS 2 Zephyr fixed deployment",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "name", "domain_id", "node", "rmw", "message_profile", "graph", "endpoints"],
+  "required": ["schema_version", "name", "domain_id", "node", "rmw", "message_profile", "graph", "endpoints", "resources"],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
     "domain_id": {"type": "integer", "minimum": 0, "maximum": 232},
     "node": {
@@ -52,6 +52,53 @@
               "durability": {"enum": ["volatile", "transient_local"]},
               "history": {"const": "keep_last"},
               "depth": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["local_endpoints", "remote", "workers", "application", "targets"],
+      "properties": {
+        "local_endpoints": {"type": "integer", "minimum": 0},
+        "remote": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["participants", "nodes", "endpoints"],
+          "properties": {
+            "participants": {"type": "integer", "minimum": 0},
+            "nodes": {"type": "integer", "minimum": 0},
+            "endpoints": {"type": "integer", "minimum": 0}
+          }
+        },
+        "workers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["maximum"],
+          "properties": {
+            "maximum": {"type": "integer", "minimum": 1}
+          }
+        },
+        "application": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["static_reserve_bytes"],
+          "properties": {
+            "static_reserve_bytes": {"type": "integer", "minimum": 0}
+          }
+        },
+        "targets": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["flash_bytes", "ram_bytes"],
+            "properties": {
+              "flash_bytes": {"type": "integer", "minimum": 1},
+              "ram_bytes": {"type": "integer", "minimum": 1}
             }
           }
         }

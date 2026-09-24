@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "name": "static_control",
   "domain_id": 95,
   "node": {
@@ -12,6 +12,34 @@
     "outbound": false,
     "inbound": false,
     "api": []
+  },
+  "resources": {
+    "local_endpoints": 2,
+    "remote": {
+      "participants": 0,
+      "nodes": 0,
+      "endpoints": 0
+    },
+    "workers": {
+      "maximum": 8
+    },
+    "application": {
+      "static_reserve_bytes": 16384
+    },
+    "targets": {
+      "native_sim/native/64": {
+        "flash_bytes": 900000,
+        "ram_bytes": 1400000
+      },
+      "esp32_devkitc/esp32/procpu": {
+        "flash_bytes": 1200000,
+        "ram_bytes": 320000
+      },
+      "esp32s3_devkitc/esp32s3/procpu": {
+        "flash_bytes": 1100000,
+        "ram_bytes": 300000
+      }
+    }
   },
   "endpoints": [
     {
