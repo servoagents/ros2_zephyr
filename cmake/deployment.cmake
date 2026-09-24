@@ -31,6 +31,15 @@ function(ros2_zephyr_compile_deployment deployment_file)
     message(FATAL_ERROR "Deployment compilation failed: ${compile_error}")
   endif()
 
+  include("${generated_directory}/generated_features.cmake")
+  if(NOT DEFINED ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS)
+    message(FATAL_ERROR "Generated deployment does not define rclc features")
+  endif()
+  set(ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS
+      "${ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS}" CACHE INTERNAL
+      "Whether the compiled deployment requires rclc actions" FORCE
+  )
+
   set_property(
     DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${deployment_file}"

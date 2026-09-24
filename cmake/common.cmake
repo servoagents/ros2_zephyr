@@ -8,6 +8,10 @@ if(NOT IS_DIRECTORY "${ROS2_ZEPHYR_DEPS_ROOT}")
   message(FATAL_ERROR "ROS2_ZEPHYR_DEPS_ROOT must name an existing directory")
 endif()
 
+if(NOT DEFINED ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS)
+  set(ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS ON)
+endif()
+
 zephyr_get_system_include_directories_for_lang_as_string(C zephyr_system_includes)
 zephyr_get_include_directories_for_lang_as_string(C zephyr_includes)
 zephyr_get_compile_definitions_for_lang_as_string(C zephyr_definitions)
@@ -25,10 +29,8 @@ set(ros_library "${ros_work_root}/libros2_zephyr.a")
 set(toolchain_file "${ros2_zephyr_root}/zephyr_toolchain.cmake")
 
 set(ros2_zephyr_header_packages
-    action_msgs
     builtin_interfaces
     rcl
-    rcl_action
     rcl_interfaces
     rcl_logging_interface
     rclc
@@ -46,6 +48,9 @@ set(ros2_zephyr_header_packages
     type_description_interfaces
     unique_identifier_msgs
 )
+if(ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS)
+  list(APPEND ros2_zephyr_header_packages action_msgs rcl_action)
+endif()
 
 set(ros2_zephyr_backend_build_environment "")
 set(ros2_zephyr_backend_dependencies "")

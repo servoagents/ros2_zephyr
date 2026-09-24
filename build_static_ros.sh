@@ -9,6 +9,7 @@ set -euo pipefail
 : "${ROS2_ZEPHYR_BACKEND_BUILD_SCRIPT:?}"
 : "${ROS2_ZEPHYR_AR:?}"
 : "${ROS2_ZEPHYR_RANLIB:?}"
+: "${ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS:?}"
 
 HOST_ROOT="${ROS2_ZEPHYR_DEPS_ROOT}/host"
 TARGET_SOURCE="${ROS2_ZEPHYR_DEPS_ROOT}/target/src"
@@ -71,6 +72,15 @@ for rcutils_patch in \
     exit 2
   fi
 done
+
+rclc_source="${TARGET_SRC}/ros2-rclc"
+rclc_patch="${ROS2_ZEPHYR_MODULE_DIR}/patches/rclc-optional-actions.patch"
+if git -C "${rclc_source}" apply --check "${rclc_patch}" >/dev/null 2>&1; then
+  git -C "${rclc_source}" apply "${rclc_patch}"
+elif ! git -C "${rclc_source}" apply --reverse --check "${rclc_patch}" >/dev/null 2>&1; then
+  echo "rclc optional-actions patch does not apply cleanly" >&2
+  exit 2
+fi
 
 rosidl_runtime_source="${TARGET_SRC}/ros2-rosidl"
 rosidl_runtime_patch="${ROS2_ZEPHYR_MODULE_DIR}/patches/rosidl-runtime-c-fixed-profile.patch"

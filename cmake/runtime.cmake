@@ -38,6 +38,7 @@ ExternalProject_Add(
     "ROS2_ZEPHYR_AR=${CMAKE_AR}"
     "ROS2_ZEPHYR_RANLIB=${CMAKE_RANLIB}"
     "ROS2_ZEPHYR_DOMAIN_ID=${CONFIG_ROS2_ZEPHYR_DOMAIN_ID}"
+    "ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS=${ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS}"
     ${ros2_zephyr_backend_build_environment}
     bash "${CMAKE_CURRENT_LIST_DIR}/../build_static_ros.sh"
   INSTALL_COMMAND ""
@@ -55,6 +56,11 @@ set_target_properties(
 add_dependencies(ros2_zephyr_static ros2_zephyr_runtime)
 
 zephyr_interface_library_named(ros2_zephyr)
+if(ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS)
+  target_compile_definitions(ros2_zephyr INTERFACE RCLC_ENABLE_ACTIONS=1)
+else()
+  target_compile_definitions(ros2_zephyr INTERFACE RCLC_ENABLE_ACTIONS=0)
+endif()
 target_include_directories(
   ros2_zephyr INTERFACE "${CMAKE_CURRENT_LIST_DIR}/../include"
                         ${ros2_zephyr_include_directories}

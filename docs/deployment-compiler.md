@@ -28,13 +28,20 @@ The generated directory contains:
 generated_ros_init.c
 generated_ros_init.h
 generated_ros2_zephyr.conf
+generated_features.cmake
 deployment-plan.json
 deployment-report.md
 ```
 
 `generated_ros_init.c` creates every endpoint once, gives the executor its
 exact subscription capacity, and prepares its wait set before returning to the
-application. Endpoint definitions must not be repeated in handwritten source.
+application.
+
+`generated_features.cmake` carries compile-time feature selections into the
+ROS cross-build. Fixed publisher/subscription deployments disable rclc action
+support while builds without a compiled deployment retain the upstream default.
+
+Endpoint definitions must not be repeated in handwritten source.
 
 ## Validation boundary
 

@@ -36,6 +36,7 @@ class DeploymentCompilerTest(unittest.TestCase):
             "generated_ros_init.c",
             "generated_ros_init.h",
             "generated_ros2_zephyr.conf",
+            "generated_features.cmake",
             "deployment-plan.json",
             "deployment-report.md",
         }
@@ -48,6 +49,9 @@ class DeploymentCompilerTest(unittest.TestCase):
                 self.assertEqual({path.name for path in first.iterdir()}, expected_names)
                 for name in expected_names:
                     self.assertEqual((first / name).read_bytes(), (second / name).read_bytes())
+                generated_features = (first / "generated_features.cmake").read_text(encoding="utf-8")
+                self.assertIn("set(ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS OFF)", generated_features)
+                self.assertIn("ros2_zephyr_test_msgs", generated_features)
                 generated_config = (first / "generated_ros2_zephyr.conf").read_text(encoding="utf-8")
                 if backend == "rmw_zenoh_pico":
                     self.assertIn("CONFIG_NET_TCP=y", generated_config)

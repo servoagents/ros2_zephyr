@@ -1,0 +1,358 @@
+diff --git a/rclc/CMakeLists.txt b/rclc/CMakeLists.txt
+index 95edad5..55cd0dd 100644
+--- a/rclc/CMakeLists.txt
++++ b/rclc/CMakeLists.txt
+@@ -29,10 +29,14 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
+ #################################################
+ find_package(ament_cmake_ros REQUIRED)
+ find_package(rcl REQUIRED)
+-find_package(rcl_action REQUIRED)
+ find_package(rcutils REQUIRED)
+ find_package(rosidl_generator_c REQUIRED)
+ 
++option(RCLC_ENABLE_ACTIONS "Build rclc action client and server support" ON)
++if(RCLC_ENABLE_ACTIONS)
++  find_package(rcl_action REQUIRED)
++endif()
++
+ if("${rcl_VERSION}" VERSION_LESS "1.0.0")
+   message(STATUS
+     "Found rcl version ${rcl_VERSION}, which belongs to Dashing or Eloquent")
+@@ -49,21 +53,26 @@ endif()
+ # create library
+ #################################################
+ 
+-add_library(${PROJECT_NAME}
++set(rclc_sources
+   src/rclc/init.c
+   src/rclc/publisher.c
+   src/rclc/subscription.c
+   src/rclc/client.c
+   src/rclc/service.c
+   src/rclc/timer.c
+-  src/rclc/action_client.c
+-  src/rclc/action_server.c
+-  src/rclc/action_goal_handle.c
+   src/rclc/node.c
+   src/rclc/executor_handle.c
+   src/rclc/executor.c
+   src/rclc/sleep.c
+ )
++if(RCLC_ENABLE_ACTIONS)
++  list(APPEND rclc_sources
++    src/rclc/action_client.c
++    src/rclc/action_server.c
++    src/rclc/action_goal_handle.c
++  )
++endif()
++add_library(${PROJECT_NAME} ${rclc_sources})
+ if("${rcl_VERSION}" VERSION_LESS "1.0.0")
+   target_sources(${PROJECT_NAME}
+     PRIVATE src/rclc/rcl_wait_set_is_valid_backport.c)
+@@ -81,10 +90,12 @@ target_link_libraries(${PROJECT_NAME} ${CMAKE_THREAD_LIBS_INIT})
+ # specific order: dependents before dependencies
+ target_link_libraries(${PROJECT_NAME}
+   rcl::rcl
+-  rcl_action::rcl_action
+   rcutils::rcutils
+   ${rosidl_generator_c_LIBRARIES}
+ )
++if(RCLC_ENABLE_ACTIONS)
++  target_link_libraries(${PROJECT_NAME} rcl_action::rcl_action)
++endif()
+ 
+ #################################################
+ # install
+@@ -95,7 +106,8 @@ target_link_libraries(${PROJECT_NAME}
+ # Causes the visibility macros to use dllexport rather than dllimport,
+ # which is appropriate when building the dll but not consuming it.
+ target_compile_definitions(${PROJECT_NAME}
+-  PRIVATE "RCLC_BUILDING_LIBRARY")
++  PRIVATE "RCLC_BUILDING_LIBRARY"
++  PUBLIC "RCLC_ENABLE_ACTIONS=$<BOOL:${RCLC_ENABLE_ACTIONS}>")
+ 
+ install(
+   TARGETS ${PROJECT_NAME} EXPORT ${PROJECT_NAME}
+@@ -130,14 +142,16 @@ if(BUILD_TESTING)
+   find_package(std_msgs REQUIRED)
+   find_package(example_interfaces REQUIRED)
+   find_package(rclcpp REQUIRED)
+-  find_package(rclcpp_action REQUIRED)
++  if(RCLC_ENABLE_ACTIONS)
++    find_package(rclcpp_action REQUIRED)
++  endif()
+ 
+   # No copyright header check since link to NOTICE file is not recognized properly.
+   set(ament_cmake_copyright_FOUND TRUE)
+ 
+   ament_lint_auto_find_test_dependencies()
+ 
+-  ament_add_gtest(${PROJECT_NAME}_test
++  set(rclc_test_sources
+     test/rclc/test_init.cpp
+     test/rclc/test_node.cpp
+     test/rclc/test_publisher.cpp
+@@ -147,16 +161,20 @@ if(BUILD_TESTING)
+     test/rclc/test_timer.cpp
+     test/rclc/test_executor_handle.cpp
+     test/rclc/test_executor.cpp
+-    test/rclc/test_action_server.cpp
+-    test/rclc/test_action_client.cpp
+   )
++  if(RCLC_ENABLE_ACTIONS)
++    list(APPEND rclc_test_sources
++      test/rclc/test_action_server.cpp
++      test/rclc/test_action_client.cpp
++    )
++  endif()
++  ament_add_gtest(${PROJECT_NAME}_test ${rclc_test_sources})
+ 
+   target_include_directories(${PROJECT_NAME}_test PRIVATE include src)
+   target_link_libraries(${PROJECT_NAME}_test ${PROJECT_NAME})
+   target_link_libraries(${PROJECT_NAME}_test
+     ${example_interfaces_TARGETS}
+     rclcpp::rclcpp
+-    rclcpp_action::rclcpp_action
+     rcl::rcl
+     rcutils::rcutils
+     ${rosidl_generator_c_LIBRARIES}
+@@ -164,6 +182,9 @@ if(BUILD_TESTING)
+     ${std_msgs_TARGETS}
+     ${test_msgs_TARGETS}
+   )
++  if(RCLC_ENABLE_ACTIONS)
++    target_link_libraries(${PROJECT_NAME}_test rclcpp_action::rclcpp_action)
++  endif()
+ 
+ 
+ endif()
+@@ -176,7 +197,9 @@ ament_export_include_directories(include)
+ ament_export_libraries(${PROJECT_NAME})
+ ament_export_dependencies(ament_cmake)
+ ament_export_dependencies(rcl)
+-ament_export_dependencies(rcl_action)
++if(RCLC_ENABLE_ACTIONS)
++  ament_export_dependencies(rcl_action)
++endif()
+ ament_export_dependencies(rcutils)
+ ament_export_dependencies(rosidl_generator_c)
+ ament_package()
+diff --git a/rclc/include/rclc/executor.h b/rclc/include/rclc/executor.h
+index 104830f..200d982 100644
+--- a/rclc/include/rclc/executor.h
++++ b/rclc/include/rclc/executor.h
+@@ -32,8 +32,10 @@ extern "C"
+ #include "rclc/sleep.h"
+ #include "rclc/visibility_control.h"
+ 
++#if RCLC_ENABLE_ACTIONS
+ #include "rclc/action_client.h"
+ #include "rclc/action_server.h"
++#endif
+ 
+ /*! \file executor.h
+     \brief The RCLC-Executor provides an Executor based on RCL in which all callbacks are
+@@ -427,6 +429,7 @@ rclc_executor_add_service(
+   void * response_msg,
+   rclc_service_callback_t callback);
+ 
++#if RCLC_ENABLE_ACTIONS
+ /**
+  *  Adds an action client to an executor.
+  *  An error is returned if {@link rclc_executor_t.handles} array is full.
+@@ -506,6 +509,7 @@ rclc_executor_add_action_server(
+   rclc_action_server_handle_goal_callback_t goal_callback,
+   rclc_action_server_handle_cancel_callback_t cancel_callback,
+   void * context);
++#endif
+ 
+ /**
+  *  Adds a service to an executor.
+diff --git a/rclc/include/rclc/executor_handle.h b/rclc/include/rclc/executor_handle.h
+index 844b046..947fa9b 100644
+--- a/rclc/include/rclc/executor_handle.h
++++ b/rclc/include/rclc/executor_handle.h
+@@ -16,6 +16,10 @@
+ #ifndef RCLC__EXECUTOR_HANDLE_H_
+ #define RCLC__EXECUTOR_HANDLE_H_
+ 
++#ifndef RCLC_ENABLE_ACTIONS
++#define RCLC_ENABLE_ACTIONS 1
++#endif
++
+ #if __cplusplus
+ extern "C"
+ {
+@@ -24,8 +28,10 @@ extern "C"
+ #include <rcl/rcl.h>
+ #include <rclc/visibility_control.h>
+ 
++#if RCLC_ENABLE_ACTIONS
+ #include <rclc/action_client.h>
+ #include <rclc/action_server.h>
++#endif
+ 
+ /// TODO (jst3si) Where is this defined? - in my build environment this variable is not set.
+ // #define ROS_PACKAGE_NAME "rclc"
+@@ -43,8 +49,10 @@ typedef enum
+   RCLC_SERVICE,
+   RCLC_SERVICE_WITH_REQUEST_ID,
+   RCLC_SERVICE_WITH_CONTEXT,
++#if RCLC_ENABLE_ACTIONS
+   RCLC_ACTION_CLIENT,
+   RCLC_ACTION_SERVER,
++#endif
+   RCLC_GUARD_CONDITION,
+   // RCLC_GUARD_CONDITION_WITH_CONTEXT,  //TODO
+   RCLC_NONE
+@@ -115,8 +123,10 @@ typedef struct
+     rcl_client_t * client;
+     rcl_service_t * service;
+     rcl_guard_condition_t * gc;
++#if RCLC_ENABLE_ACTIONS
+     rclc_action_client_t * action_client;
+     rclc_action_server_t * action_server;
++#endif
+   };
+   /// Storage of data, which holds the message of a subscription, service, etc.
+   /// subscription: ptr to message
+diff --git a/rclc/include/rclc/rclc.h b/rclc/include/rclc/rclc.h
+index 97896c9..5f34a39 100644
+--- a/rclc/include/rclc/rclc.h
++++ b/rclc/include/rclc/rclc.h
+@@ -17,6 +17,10 @@
+ #ifndef RCLC__RCLC_H_
+ #define RCLC__RCLC_H_
+ 
++#ifndef RCLC_ENABLE_ACTIONS
++#define RCLC_ENABLE_ACTIONS 1
++#endif
++
+ #if __cplusplus
+ extern "C"
+ {
+@@ -32,8 +36,10 @@ extern "C"
+ #include "rclc/timer.h"
+ #include "rclc/client.h"
+ #include "rclc/service.h"
++#if RCLC_ENABLE_ACTIONS
+ #include "rclc/action_client.h"
+ #include "rclc/action_server.h"
++#endif
+ #include "rclc/types.h"
+ #include "rclc/visibility_control.h"
+ #if __cplusplus
+diff --git a/rclc/src/rclc/executor.c b/rclc/src/rclc/executor.c
+index e9adebf..8877e27 100644
+--- a/rclc/src/rclc/executor.c
++++ b/rclc/src/rclc/executor.c
+@@ -17,10 +17,12 @@
+ #include "rclc/executor.h"
+ #include <rcutils/time.h>
+ 
++#if RCLC_ENABLE_ACTIONS
+ #include "./action_generic_types.h"
+ #include "./action_goal_handle_internal.h"
+ #include "./action_client_internal.h"
+ #include "./action_server_internal.h"
++#endif
+ 
+ // Include backport of function 'rcl_wait_set_is_valid' introduced in Foxy
+ // in case of building for Dashing and Eloquent. This pre-processor macro
+@@ -795,6 +797,7 @@ rclc_executor_remove_guard_condition(
+   return ret;
+ }
+ 
++#if RCLC_ENABLE_ACTIONS
+ rcl_ret_t
+ rclc_executor_add_action_client(
+   rclc_executor_t * executor,
+@@ -1012,6 +1015,8 @@ rclc_executor_add_action_server(
+   return ret;
+ }
+ 
++#endif
++
+ /***
+  * operates on handle executor->handles[i]
+  * - evaluates the status bit in the wait_set for this handle
+@@ -1056,6 +1061,7 @@ _rclc_check_for_new_data(rclc_executor_handle_t * handle, rcl_wait_set_t * wait_
+       handle->data_available = (NULL != wait_set->guard_conditions[handle->index]);
+       break;
+ 
++#if RCLC_ENABLE_ACTIONS
+     case RCLC_ACTION_CLIENT:
+       rc = rcl_action_client_wait_set_get_entities_ready(
+         wait_set,
+@@ -1078,6 +1084,7 @@ _rclc_check_for_new_data(rclc_executor_handle_t * handle, rcl_wait_set_t * wait_
+         &handle->action_server->goal_expired_available
+       );
+       break;
++#endif
+ 
+     default:
+       RCUTILS_LOG_DEBUG_NAMED(
+@@ -1128,6 +1135,7 @@ _rclc_take_new_data(rclc_executor_handle_t * handle, rcl_wait_set_t * wait_set)
+       // notification, that timer is ready already done in _rclc_evaluate_data_availability()
+       break;
+ 
++#if RCLC_ENABLE_ACTIONS
+     case RCLC_ACTION_CLIENT:
+       if (handle->action_client->goal_response_available) {
+         Generic_SendGoal_Response aux_goal_response;
+@@ -1334,6 +1342,7 @@ _rclc_take_new_data(rclc_executor_handle_t * handle, rcl_wait_set_t * wait_set)
+       // case RCLC_GUARD_CONDITION_WITH_CONTEXT:
+       // nothing to do
+       break;
++#endif
+ 
+     default:
+       RCUTILS_LOG_DEBUG_NAMED(
+@@ -1349,6 +1358,7 @@ bool _rclc_check_handle_data_available(rclc_executor_handle_t * handle)
+   RCL_CHECK_ARGUMENT_FOR_NULL(handle, false);
+ 
+   switch (handle->type) {
++#if RCLC_ENABLE_ACTIONS
+     case RCLC_ACTION_CLIENT:
+       if (handle->action_client->feedback_available ||
+         handle->action_client->status_available ||
+@@ -1370,6 +1380,7 @@ bool _rclc_check_handle_data_available(rclc_executor_handle_t * handle)
+         return true;
+       }
+       break;
++#endif
+ 
+     default:
+       if (handle->data_available) {
+@@ -1503,6 +1514,7 @@ _rclc_execute(rclc_executor_handle_t * handle)
+       // case RCLC_GUARD_CONDITION_WITH_CONTEXT:  //TODO
+       //   break;
+ 
++#if RCLC_ENABLE_ACTIONS
+       case RCLC_ACTION_CLIENT:
+         // TODO(pablogs9): Handle action client status
+         if (handle->action_client->goal_response_available) {
+@@ -1671,6 +1683,7 @@ _rclc_execute(rclc_executor_handle_t * handle)
+           handle->action_server->cancel_request_available = false;
+         }
+         break;
++#endif
+ 
+       default:
+         RCUTILS_LOG_DEBUG_NAMED(
+@@ -1914,6 +1927,7 @@ rclc_executor_spin_some(rclc_executor_t * executor, const uint64_t timeout_ns)
+         }
+         break;
+ 
++#if RCLC_ENABLE_ACTIONS
+       case RCLC_ACTION_CLIENT:
+         // add action client to wait_set and save index
+         rc = rcl_action_wait_set_add_action_client(
+@@ -1945,6 +1959,7 @@ rclc_executor_spin_some(rclc_executor_t * executor, const uint64_t timeout_ns)
+           return rc;
+         }
+         break;
++#endif
+ 
+       default:
+         RCUTILS_LOG_DEBUG_NAMED(
