@@ -58,6 +58,9 @@ The RMW selection boundary and backend capability table are recorded in
 The fixed endpoint description, generated build artifacts, and rejection
 rules are documented in
 [the deployment compiler guide](docs/deployment-compiler.md).
+The first measured middleware optimization and its steady-state allocation
+regression are documented in
+[the fixed wait-set note](docs/fixed-waitset.md).
 
 ## Prerequisites
 

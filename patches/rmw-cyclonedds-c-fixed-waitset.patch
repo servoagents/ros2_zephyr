@@ -1,0 +1,125 @@
+diff --git a/rmw_cyclonedds_c/src/rmw_cyclonedds_c.c b/rmw_cyclonedds_c/src/rmw_cyclonedds_c.c
+index 9d53ad8..7fa6c3f 100644
+--- a/rmw_cyclonedds_c/src/rmw_cyclonedds_c.c
++++ b/rmw_cyclonedds_c/src/rmw_cyclonedds_c.c
+@@ -1128,6 +1128,53 @@ static rmw_ret_t attach_entity(wait_set_data_t *data, dds_entity_t entity)
+   return RMW_RET_OK;
+ }
+ 
++static rmw_ret_t validate_requested_attachments(
++    const wait_set_data_t *data, const rmw_subscriptions_t *subscriptions,
++    const rmw_guard_conditions_t *guard_conditions, size_t *requested_count,
++    bool *attachments_match)
++{
++  *requested_count = 0U;
++  *attachments_match = true;
++  if (subscriptions != NULL) {
++    if (subscriptions->subscriber_count > data->capacity) {
++      RMW_SET_ERROR_MSG("wait set capacity exceeded");
++      return RMW_RET_INVALID_ARGUMENT;
++    }
++    for (size_t index = 0U; index < subscriptions->subscriber_count; ++index) {
++      if (subscriptions->subscribers[index] == NULL) {
++        RMW_SET_ERROR_MSG("null subscription in wait set");
++        return RMW_RET_INVALID_ARGUMENT;
++      }
++      const endpoint_data_t *endpoint = subscriptions->subscribers[index];
++      if (*requested_count >= data->attached_count ||
++          data->attached[*requested_count] != endpoint->condition) {
++        *attachments_match = false;
++      }
++      ++*requested_count;
++    }
++  }
++  if (guard_conditions != NULL) {
++    if (guard_conditions->guard_condition_count > data->capacity - *requested_count) {
++      RMW_SET_ERROR_MSG("wait set capacity exceeded");
++      return RMW_RET_INVALID_ARGUMENT;
++    }
++    for (size_t index = 0U; index < guard_conditions->guard_condition_count; ++index) {
++      if (guard_conditions->guard_conditions[index] == NULL) {
++        RMW_SET_ERROR_MSG("null guard condition in wait set");
++        return RMW_RET_INVALID_ARGUMENT;
++      }
++      const dds_entity_t entity = *(dds_entity_t *)guard_conditions->guard_conditions[index];
++      if (*requested_count >= data->attached_count ||
++          data->attached[*requested_count] != entity) {
++        *attachments_match = false;
++      }
++      ++*requested_count;
++    }
++  }
++  *attachments_match = *attachments_match && *requested_count == data->attached_count;
++  return RMW_RET_OK;
++}
++
+ rmw_ret_t rmw_wait(rmw_subscriptions_t *subscriptions, rmw_guard_conditions_t *guard_conditions,
+                    rmw_services_t *services, rmw_clients_t *clients, rmw_events_t *events,
+                    rmw_wait_set_t *wait_set, const rmw_time_t *wait_timeout)
+@@ -1145,37 +1192,38 @@ rmw_ret_t rmw_wait(rmw_subscriptions_t *subscriptions, rmw_guard_conditions_t *g
+   }
+ 
+   wait_set_data_t *data = wait_set->data;
+-  for (size_t index = 0U; index < data->attached_count; ++index) {
+-    const dds_return_t detach_result = dds_waitset_detach(data->waitset, data->attached[index]);
+-    if (detach_result < 0) {
+-      return map_dds_result(detach_result, "dds_waitset_detach");
+-    }
+-  }
+-  data->attached_count = 0U;
+-
+-  if (subscriptions != NULL) {
+-    for (size_t index = 0U; index < subscriptions->subscriber_count; ++index) {
+-      if (subscriptions->subscribers[index] == NULL) {
+-        RMW_SET_ERROR_MSG("null subscription in wait set");
+-        return RMW_RET_INVALID_ARGUMENT;
+-      }
+-      endpoint_data_t *endpoint = subscriptions->subscribers[index];
+-      const rmw_ret_t result = attach_entity(data, endpoint->condition);
+-      if (result != RMW_RET_OK) {
+-        return result;
++  size_t requested_count = 0U;
++  bool attachments_match = false;
++  rmw_ret_t validation_result = validate_requested_attachments(
++      data, subscriptions, guard_conditions, &requested_count, &attachments_match);
++  if (validation_result != RMW_RET_OK) {
++    return validation_result;
++  }
++  if (!attachments_match) {
++    for (size_t index = 0U; index < data->attached_count; ++index) {
++      const dds_return_t detach_result = dds_waitset_detach(data->waitset, data->attached[index]);
++      if (detach_result < 0) {
++        return map_dds_result(detach_result, "dds_waitset_detach");
+       }
+     }
+-  }
+-  if (guard_conditions != NULL) {
+-    for (size_t index = 0U; index < guard_conditions->guard_condition_count; ++index) {
+-      if (guard_conditions->guard_conditions[index] == NULL) {
+-        RMW_SET_ERROR_MSG("null guard condition in wait set");
+-        return RMW_RET_INVALID_ARGUMENT;
++    data->attached_count = 0U;
++
++    if (subscriptions != NULL) {
++      for (size_t index = 0U; index < subscriptions->subscriber_count; ++index) {
++        endpoint_data_t *endpoint = subscriptions->subscribers[index];
++        const rmw_ret_t result = attach_entity(data, endpoint->condition);
++        if (result != RMW_RET_OK) {
++          return result;
++        }
+       }
+-      const dds_entity_t entity = *(dds_entity_t *)guard_conditions->guard_conditions[index];
+-      const rmw_ret_t result = attach_entity(data, entity);
+-      if (result != RMW_RET_OK) {
+-        return result;
++    }
++    if (guard_conditions != NULL) {
++      for (size_t index = 0U; index < guard_conditions->guard_condition_count; ++index) {
++        const dds_entity_t entity = *(dds_entity_t *)guard_conditions->guard_conditions[index];
++        const rmw_ret_t result = attach_entity(data, entity);
++        if (result != RMW_RET_OK) {
++          return result;
++        }
+       }
+     }
+   }

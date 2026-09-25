@@ -31,6 +31,16 @@ if [[ -n "${ROS2_ZEPHYR_RMW_CYCLONEDDS_C_SOURCE:-}" ]]; then
     "${ROS2_ZEPHYR_RMW_CYCLONEDDS_C_SOURCE}/" "${staged_rmw_source}/"
 fi
 
+staged_rmw_source="${TARGET_SRC}/servoagents-rmw_cyclonedds_c"
+fixed_waitset_patch="${ROS2_ZEPHYR_MODULE_DIR}/patches/rmw-cyclonedds-c-fixed-waitset.patch"
+if git -C "${staged_rmw_source}" apply --check "${fixed_waitset_patch}" >/dev/null 2>&1; then
+  git -C "${staged_rmw_source}" apply "${fixed_waitset_patch}"
+elif ! git -C "${staged_rmw_source}" apply --reverse --check \
+  "${fixed_waitset_patch}" >/dev/null 2>&1; then
+  echo "rmw_cyclonedds_c fixed-waitset patch does not apply cleanly" >&2
+  return 1
+fi
+
 for ignored_package in \
   "${TARGET_SRC}/fj-blanco-rmw_zenoh_pico/rmw_zenoh_pico" \
   "${TARGET_SRC}/micro_ros-micro_ros_msgs/micro_ros_msgs" \

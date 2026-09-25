@@ -46,6 +46,19 @@ The build writes `resource-plan.{json,md}` during configuration and
 image can be flashed. The contract and accounting rules are documented in
 [`docs/resource-contracts.md`](../../docs/resource-contracts.md).
 
+After capturing at least two consecutive `STATIC_CONTROL_METRICS` lines from
+a quiescent run, check the zero-ROS-allocation and recurring middleware
+allocation bounds with:
+
+```sh
+tools/check_static_control_metrics.py /tmp/static-control.log
+```
+
+The default middleware limit is a per-sample delta of 32 allocation attempts;
+the first cumulative sample is deliberately excluded. Discovery or endpoint
+churn is not quiescent and should be analyzed separately. See
+[`docs/fixed-waitset.md`](../../docs/fixed-waitset.md).
+
 The board files select USB Serial/JTAG, 32 MiB octal flash and 16 MiB PSRAM on
 the tested ESP32-S3-DevKitC. The ESP32-S3 supports 2.4 GHz Wi-Fi only, so use a
 2.4 GHz SSID rather than a 5 GHz-only network.
@@ -85,6 +98,7 @@ tracked resources:
 west twister -T samples/static_control/tests/plant -p native_sim/native/64
 west twister -T samples/static_control/tests/control -p native_sim/native/64
 samples/static_control/test_init_failure.sh
+python3 -m unittest tests.test_static_control_metrics
 ```
 
 Allocation failure injection is available only on the native target and is

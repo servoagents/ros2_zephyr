@@ -55,3 +55,12 @@ This is the first useful Milestone C reduction, so specialization stops at the
 optional-action boundary. Graph and logging specialization remain separate
 future experiments because they change declared semantics or diagnostic
 coverage and are not needed to satisfy this milestone's exit condition.
+
+## First deeper optimization
+
+Milestone E traced the largest remaining recurring allocation source to
+Cyclone wait-set observer registration. The fixed deployment now reuses an
+unchanged attachment set while retaining the ordinary detach/attach path when
+the requested entities change. The exact call path, ownership argument,
+regression bound, resource delta, and native and ESP32-S3 measurements are in
+[the fixed wait-set note](fixed-waitset.md).
