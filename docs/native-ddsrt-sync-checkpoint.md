@@ -98,6 +98,12 @@ hardware windows and a typed stock Lyrical Cyclone peer DISABLED → ACTIVE →
 STALE exchange also passed; those earlier runs are retained as integration
 evidence, not mislabelled as runs of the final object code.
 
+A separate clean `pinned-native-sync-loopback` build used the staged manifest
+checkout at `31e9ea8a`, with no local-source override. Its generated resource
+report says `ddsrt_sync=zephyr-native`, and the runner again printed
+`ROS2_ZEPHYR_LOOPBACK_PASS`. This confirms the published pin can build through
+the normal dependency path, not only from the editable fork tree.
+
 The controlled native-simulator static images linked at 719,984 B flash /
 1,224,121 B RAM (POSIX) and 719,423 B flash / 1,223,885 B RAM (native
 sync): native sync was 561 B smaller in flash and 236 B smaller in RAM for
