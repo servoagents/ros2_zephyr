@@ -1,8 +1,8 @@
 # Phase 4 Milestone A baseline and comparison policy
 
-Status: native qualification complete; ESP32-S3 kernel test and loopback
-execute successfully, but the full static-control image has not reached
-Zephyr startup on the current UART-only power setup. No native DDSRT
+Status: native qualification complete; ESP32-S3 kernel test, loopback and
+static control execute successfully, including three quiescent hardware windows
+and a typed stock ROS peer round trip. No native DDSRT
 synchronization or thread implementation has been introduced. Generated
 artifacts and runtime logs are preserved in the ignored `build/phase4-a/`
 tree, not copied into tracked source.
@@ -46,8 +46,8 @@ tree, not copied into tracked source.
   `cmake/rmw/cyclonedds_c.cmake` (loopback peer 127.0.0.1, multicast off,
   1,400 B max message, 8 KiB receive buffer); ESP static-control XML instead
   uses the current desktop IP `192.168.1.103`. Desktop peer in the Phase 3
-  checkpoint was stock Lyrical `rmw_cyclonedds_cpp`. No desktop peer was run
-  in this Milestone A qualification.
+  checkpoint was stock Lyrical `rmw_cyclonedds_cpp`. The fresh Milestone A
+  peer used the same stock RMW in the Lyrical desktop container.
 
 Build commands (from `ros2_zephyr`, with `build/zephyr-env-lyrical.sh`
 already provisioned):
@@ -78,9 +78,25 @@ west flash -d build/phase4-a/fixed-loopback-esp32s3 --runner esp32 --no-rebuild 
 samples/loopback/run_esp32.sh /dev/ttyUSB0 build/phase4-a/loopback-hardware
 # WIFI_SSID, WIFI_PSK and ROS_PEER_IP must be exported before this build.
 ROS2_ZEPHYR_STATIC_CONTROL_BUILD_DIR="$PWD/build/phase4-a/fixed-static-esp32s3" ROS2_ZEPHYR_BUILD_JOBS=2 samples/static_control/build_esp32.sh
-west flash -d build/phase4-a/fixed-static-esp32s3 --runner esp32 --no-rebuild --esp-device /dev/ttyUSB0
-python samples/loopback/capture_esp32.py /dev/ttyUSB0 --timeout 90 --until 'STATIC_CONTROL_METRICS' --minimum-matches 12
+west flash -d build/phase4-a/fixed-static-esp32s3 --runner esp32 --no-rebuild --esp-device /dev/ttyACM0
+python samples/loopback/capture_esp32.py /dev/ttyACM0 --reconnect --timeout 90 --until 'STATIC_CONTROL_METRICS' --minimum-matches 12
 ```
+
+For the typed peer, build `shims/ros2_zephyr_test_msgs` with `colcon` in
+the stock Lyrical desktop container, source that install and
+`/opt/ros/lyrical/setup.bash`, and run `samples/static_control/peer.py`
+with host networking and these environment values (the tested container was
+`servoagents/rmw-cyclonedds-c:lyrical`):
+
+```sh
+export ROS_DOMAIN_ID=95 RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface address='192.168.1.103' multicast='false'/></Interfaces><AllowMulticast>false</AllowMulticast></General><Discovery><ParticipantIndex>1</ParticipantIndex><MaxAutoParticipantIndex>0</MaxAutoParticipantIndex><Peers><Peer Address='192.168.1.100'/></Peers></Discovery></Domain></CycloneDDS>"
+python3 samples/static_control/peer.py --sequence 1
+```
+
+The addresses above are the observed desktop and board DHCP addresses for
+this run, not permanent defaults. Reset the board before repeating sequence
+1 or choose a strictly newer sequence.
 
 The test was also run before the Zephyr patch with
 `--outdir build/phase4-a/condvar-before`. The `*.twister.log` files,
@@ -93,11 +109,14 @@ The qualification test also built for ESP32-S3 with Twister `--build-only`
 (1/1 build, 0 executed) in `condvar-esp-build`, then was separately flashed
 and executed through `/dev/ttyUSB0`; its full log is `condvar-esp-uart.log`.
 The ESP loopback build and run logs are `fixed-loopback-esp32s3-build.log`
-and `loopback-hardware/loopback.log`; the full static-control build, flash,
-and failed startup logs are `fixed-static-esp32s3-{build,flash,run-1}.log`.
-`capture_esp32.py --minimum-matches 12` can collect a complete metrics
-window without changing the firmware, but none has yet been produced by the
-full image.
+and `loopback-hardware/loopback.log`; the full static-control build and flash
+logs are `fixed-static-esp32s3-{build,flash}.log`. The initial
+`fixed-static-esp32s3-run-1.log` listened on the CP210x `/dev/ttyUSB0` port
+and saw only ROM output. The static-control overlay selects `&usb_serial`
+for the Zephyr console, so that capture was on the wrong port, not evidence
+of failed startup. The three valid native-USB hardware captures are
+`fixed-static-esp32s3-usb-run-{1..3}.log`. The typed-peer captures are
+`fixed-static-esp32s3-peer-{desktop,uart}.log`.
 
 ## Qualification and fresh measurements
 
@@ -111,10 +130,9 @@ patch, the same 8/8 test cases pass. The Cyclone compatibility macro
 `CYCLONEDDS_ZEPHYR_CONDVAR_TIMEOUT_RELOCK` is present in pre-fix compile
 flags and absent in the fixed builds, avoiding a second lock/deadlock.
 The fixed qualification image was also flashed to the physical ESP32-S3;
-UART reports 8/8 pass, including both contended timeout cases. The small
-test's generic 8 MB header produces a ROM flash-size warning on the actual
-32 MB board, but the test executes successfully. It does not establish that
-the full Wi-Fi image boots.
+the CP210x UART reports 8/8 pass, including both contended timeout cases.
+The small test's generic 8 MB header produces a ROM flash-size warning on
+the actual 32 MB board, but the test executes successfully.
 
 | Native image | Flash B | Linked RAM B | Notes |
 |---|---:|---:|---|
@@ -159,15 +177,35 @@ of the 300,000 B budget. The Cyclone timeout relock workaround is absent.
 Fresh fixed-kernel ESP loopback builds at 712,548 B flash and 169,160 B
 linked RAM and **runs on the board**: `ROS2_ZEPHYR_LOOPBACK_PASS`, zero steady
 ROS allocation attempts, and zero live ROS/middleware allocations at cleanup.
-The full static-control image flashes with verified hash, but its UART trace
-ends after the ROM entry point, before the Zephyr boot banner. A pre-existing
-full static-control image from before this kernel patch shows the same stall;
-the small kernel test and the smaller loopback image both boot. An inadequate
-power supply for the larger image is plausible, not proven. The only USB
-device observed is the CP210x UART adapter; separate board 5 V power has
-been requested. No static-control READY or metrics line was observed, so the
-three planned 12-sample hardware windows and stock-peer interoperability
-remain **not run**, not passed. Both failed startup captures are retained.
+The full static-control image flashes with verified hash and boots on the
+board when the native USB Serial/JTAG console `/dev/ttyACM0` is monitored.
+It reports Wi-Fi address `192.168.1.100` and `STATIC_CONTROL_READY`.
+The three 12-record no-peer windows all pass the existing metrics checker:
+each has maximum adjacent middleware delta 25, final cumulative middleware
+calls 259, zero steady ROS allocation attempts, zero skipped releases,
+`max_lateness_us=0`, and 1,664 B unused control stack. Their final ROS and
+middleware allocation high-water marks are 1,095 B and 62,295 B. As for the
+native logs, metrics lines have no individual timestamps. The logs also
+contain filesystem mount-point and OS thread-ID-in-use diagnostics during
+startup; they did not prevent READY or these checks and merit separate
+investigation before claiming a clean boot log.
+
+The stock Lyrical desktop container `servoagents/rmw-cyclonedds-c:lyrical`
+built `shims/ros2_zephyr_test_msgs` and ran
+`samples/static_control/peer.py` with `ROS_DOMAIN_ID=95` and
+`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`. Default host discovery timed out;
+the working host Cyclone XML bound `192.168.1.103` with multicast disabled,
+participant index 1, and fixed peer `192.168.1.100`, matching the board's
+fixed-peer configuration. In the preserved fresh run, the peer received
+DISABLED, sent sequence 1 at target 0.5, and received ACTIVE then STALE for
+that sequence (four state samples, no FAULT). The board log confirms
+`accepted=1`, `rejected=0`, zero steady ROS allocation attempts, zero skipped
+releases, and the matching status transitions. Discovery churn raised
+middleware attempts and high-water use (to 1,092 calls and 117,278 B in the
+last record); these are reported separately from the quiescent gate. This
+verifies the typed interoperability transition, not
+the exact 250 ms expiry timing. The 250 ms rule is covered by the control
+policy test. The peer was run after the three no-peer windows.
 
 ## Frozen comparison policy before native DDSRT work
 

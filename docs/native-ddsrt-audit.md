@@ -3,10 +3,13 @@
 Milestone A established a native-simulator common baseline and qualified the
 Zephyr kernel prerequisite. See [the baseline](native-ddsrt-baseline.md) for
 commands, revisions and run evidence, and [the API inventory](native-ddsrt-api-inventory.md)
-for the pinned interfaces, callers and linked pools. ESP32-S3 kernel and
-loopback execution passed, but static-control startup remains blocked before
-Zephyr's banner with the present board power arrangement; the Phase 3
-static-control runtime checkpoint is not misrepresented as a new run.
+for the pinned interfaces, callers and linked pools. ESP32-S3 kernel,
+loopback and static-control execution passed. The initial apparent
+static-control startup failure was a console-port mismatch: this image routes
+Zephyr output to native USB Serial/JTAG, not the CP210x UART used for the
+small qualification and loopback images. Three fresh 12-record ESP32-S3
+static-control windows and a typed stock Lyrical peer test now pass; the
+Phase 3 checkpoint remains distinguished from these new measurements.
 
 The central finding is that Zephyr v4.4.0's `k_condvar_wait` drops the mutex
 on zero timeout and fails to reacquire it on finite timeout. This affects
@@ -29,7 +32,7 @@ and no current measurement justifies claiming that native DDSRT eliminates
 all POSIX storage or worker stack RAM. The Zephyr thread stack index is
 monotonic, with no reuse after joins; that is a later lifecycle topic.
 
-The smallest justified **next Cyclone patch**, after hardware confirmation,
+The smallest justified **next Cyclone patch**, after Milestone A review,
 is an opt-in Zephyr-native synchronization selector with matching public
 types and source selection, initially covering mutex, all four condvar
 families, rwlock and once while retaining POSIX threads/time. It needs a

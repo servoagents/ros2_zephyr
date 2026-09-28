@@ -86,6 +86,14 @@ ros2 topic pub --once /static_control/command \
 ros2 topic echo --qos-reliability best_effort /static_control/state
 ```
 
+For a repeatable typed command/state check using stock `rclpy`, run
+`python3 samples/static_control/peer.py` from that desktop workspace after
+sourcing the message package. It waits for DISABLED, publishes one command,
+and requires ACTIVE then STALE for the same sequence. Use `--sequence N`
+with a newer value if the board has already accepted a command without a
+reset. With multicast disabled on the board, configure desktop Cyclone DDS
+to bind the Wi-Fi interface and include the board IP as a fixed peer.
+
 ## Tests
 
 The plant test has no ROS or Zephyr dependency. The policy test runs the real
