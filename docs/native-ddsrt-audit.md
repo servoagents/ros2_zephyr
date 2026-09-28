@@ -3,9 +3,10 @@
 Milestone A established a native-simulator common baseline and qualified the
 Zephyr kernel prerequisite. See [the baseline](native-ddsrt-baseline.md) for
 commands, revisions and run evidence, and [the API inventory](native-ddsrt-api-inventory.md)
-for the pinned interfaces, callers and linked pools. The ESP32-S3 portion is
-pending a connected serial device; the Phase 3 hardware checkpoint is not
-misrepresented as a new run.
+for the pinned interfaces, callers and linked pools. ESP32-S3 kernel and
+loopback execution passed, but static-control startup remains blocked before
+Zephyr's banner with the present board power arrangement; the Phase 3
+static-control runtime checkpoint is not misrepresented as a new run.
 
 The central finding is that Zephyr v4.4.0's `k_condvar_wait` drops the mutex
 on zero timeout and fails to reacquire it on finite timeout. This affects

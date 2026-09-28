@@ -18,6 +18,7 @@ def main() -> int:
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--until", required=True)
+    parser.add_argument("--minimum-matches", type=int, default=1)
     parser.add_argument(
         "--no-reset",
         action="store_true",
@@ -29,9 +30,12 @@ def main() -> int:
         help="reopen the device after native USB disconnect/re-enumeration",
     )
     args = parser.parse_args()
+    if args.minimum_matches < 1:
+        parser.error("--minimum-matches must be positive")
 
     marker = args.until.encode()
     recent = bytearray()
+    matches = 0
     deadline = time.monotonic() + args.timeout
 
     port = None
@@ -65,12 +69,19 @@ def main() -> int:
         sys.stdout.buffer.write(chunk)
         sys.stdout.buffer.flush()
         recent.extend(chunk)
-        marker_index = recent.find(marker)
-        marker_end = marker_index + len(marker)
-        if marker_index >= 0 and b"\n" in recent[marker_end:]:
-            if port is not None:
-                port.close()
-            return 0
+        while True:
+            marker_index = recent.find(marker)
+            if marker_index < 0:
+                break
+            line_end = recent.find(b"\n", marker_index + len(marker))
+            if line_end < 0:
+                break
+            matches += 1
+            del recent[: line_end + 1]
+            if matches >= args.minimum_matches:
+                if port is not None:
+                    port.close()
+                return 0
         if len(recent) > 4096:
             del recent[:-2048]
 
@@ -78,7 +89,8 @@ def main() -> int:
         port.close()
 
     print(
-        f"serial timeout: did not observe {args.until!r} on {args.device}",
+        f"serial timeout: observed {matches}/{args.minimum_matches} complete "
+        f"{args.until!r} markers on {args.device}",
         file=sys.stderr,
     )
     return 1

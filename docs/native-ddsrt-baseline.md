@@ -1,9 +1,11 @@
 # Phase 4 Milestone A baseline and comparison policy
 
-Status: native qualification complete; ESP32-S3 execution pending a visible
-serial device. No native DDSRT synchronization or thread implementation has
-been introduced. Full generated artifacts and runtime logs are preserved in
-the ignored `build/phase4-a/` tree, not copied into tracked source.
+Status: native qualification complete; ESP32-S3 kernel test and loopback
+execute successfully, but the full static-control image has not reached
+Zephyr startup on the current UART-only power setup. No native DDSRT
+synchronization or thread implementation has been introduced. Generated
+artifacts and runtime logs are preserved in the ignored `build/phase4-a/`
+tree, not copied into tracked source.
 
 ## Exact inputs
 
@@ -15,8 +17,10 @@ the ignored `build/phase4-a/` tree, not copied into tracked source.
   at that SHA with the accepted `patches/cyclonedds-zephyr-4.4.patch` applied.
   `dependencies/platform.repos` now uses `fj-blanco/cyclonedds` at the SHA;
   the staged checkout's origin was also aligned with the fork. The branch is
-  local; no push or upstream rebase was made. Local upstream/master had three
-  newer OpenSSL/logging commits unrelated to this pinned Zephyr baseline, so rebasing
+  at the exact accepted SHA and now tracks `origin/zephyr-native-ddsrt` at
+  that SHA; no push or upstream rebase was performed as part of this audit.
+  Local upstream/master had three newer OpenSSL/logging commits unrelated
+  to this pinned Zephyr baseline, so rebasing
   would have changed the comparison input without helping Milestone A.
 - RMW: `servoagents/rmw_cyclonedds_c`
   `039e85860dc6032d51bd25dc552e5bdbbb0e686a`, followed by
@@ -40,9 +44,10 @@ the ignored `build/phase4-a/` tree, not copied into tracked source.
   16,384 B separate application reserve, ESP limits 1,100,000 B flash and
   300,000 B linked RAM. Cyclone XML is the value in
   `cmake/rmw/cyclonedds_c.cmake` (loopback peer 127.0.0.1, multicast off,
-  1,400 B max message, 8 KiB receive buffer); desktop peer in the Phase 3
+  1,400 B max message, 8 KiB receive buffer); ESP static-control XML instead
+  uses the current desktop IP `192.168.1.103`. Desktop peer in the Phase 3
   checkpoint was stock Lyrical `rmw_cyclonedds_cpp`. No desktop peer was run
-  in this native-only A qualification.
+  in this Milestone A qualification.
 
 Build commands (from `ros2_zephyr`, with `build/zephyr-env-lyrical.sh`
 already provisioned):
@@ -58,6 +63,25 @@ west twister -T samples/condvar_qualification -p native_sim/native/64 --outdir b
 west twister -T samples/static_control/tests/plant -T samples/static_control/tests/control -p native_sim/native/64 --outdir build/phase4-a/existing-twister --inline-logs
 ```
 
+ESP build and board commands (credentials were sourced from the active
+BlueHarbor NetworkManager profile, exported only into the build process and
+never printed or committed; substitute your current Wi-Fi variables):
+
+```sh
+source build/zephyr-env-lyrical.sh
+west twister -T samples/condvar_qualification -p esp32s3_devkitc/esp32s3/procpu --build-only --outdir build/phase4-a/condvar-esp-build --inline-logs
+condvar_build=build/phase4-a/condvar-esp-build/esp32s3_devkitc_esp32s3_procpu/zephyr_gnu/ros2_zephyr/samples/condvar_qualification/ros2_zephyr.condvar_qualification
+west flash -d "$condvar_build" --runner esp32 --no-rebuild --esp-device /dev/ttyUSB0
+python samples/loopback/capture_esp32.py /dev/ttyUSB0 --timeout 20 --until 'PROJECT EXECUTION SUCCESSFUL'
+ROS2_ZEPHYR_BOARD_OVERRIDE=esp32s3_devkitc/esp32s3/procpu ROS2_ZEPHYR_ESP32_BUILD_DIR="$PWD/build/phase4-a/fixed-loopback-esp32s3" ROS2_ZEPHYR_BUILD_JOBS=2 samples/loopback/build_esp32.sh
+west flash -d build/phase4-a/fixed-loopback-esp32s3 --runner esp32 --no-rebuild --esp-device /dev/ttyUSB0
+samples/loopback/run_esp32.sh /dev/ttyUSB0 build/phase4-a/loopback-hardware
+# WIFI_SSID, WIFI_PSK and ROS_PEER_IP must be exported before this build.
+ROS2_ZEPHYR_STATIC_CONTROL_BUILD_DIR="$PWD/build/phase4-a/fixed-static-esp32s3" ROS2_ZEPHYR_BUILD_JOBS=2 samples/static_control/build_esp32.sh
+west flash -d build/phase4-a/fixed-static-esp32s3 --runner esp32 --no-rebuild --esp-device /dev/ttyUSB0
+python samples/loopback/capture_esp32.py /dev/ttyUSB0 --timeout 90 --until 'STATIC_CONTROL_METRICS' --minimum-matches 12
+```
+
 The test was also run before the Zephyr patch with
 `--outdir build/phase4-a/condvar-before`. The `*.twister.log` files,
 Twister JSON/XML and handler logs preserve the results. Each build directory
@@ -65,9 +89,15 @@ contains ELF, map, `.config`, CMake cache, generated headers and deployment
 plan/report; `compile_commands.json` is present for fixed native static
 control. Native has no ESP-style `zephyr.bin`; the executable is
 `zephyr/zephyr.exe`. The `*-build.log` files preserve post-fix build output.
-The same qualification test also built for ESP32-S3 with Twister
-`--build-only` (1/1 build, 0 executed) in `condvar-esp-build`; this is not a
-hardware test pass.
+The qualification test also built for ESP32-S3 with Twister `--build-only`
+(1/1 build, 0 executed) in `condvar-esp-build`, then was separately flashed
+and executed through `/dev/ttyUSB0`; its full log is `condvar-esp-uart.log`.
+The ESP loopback build and run logs are `fixed-loopback-esp32s3-build.log`
+and `loopback-hardware/loopback.log`; the full static-control build, flash,
+and failed startup logs are `fixed-static-esp32s3-{build,flash,run-1}.log`.
+`capture_esp32.py --minimum-matches 12` can collect a complete metrics
+window without changing the firmware, but none has yet been produced by the
+full image.
 
 ## Qualification and fresh measurements
 
@@ -80,6 +110,11 @@ not proof that native DDSRT would fix it. With the separately applied kernel
 patch, the same 8/8 test cases pass. The Cyclone compatibility macro
 `CYCLONEDDS_ZEPHYR_CONDVAR_TIMEOUT_RELOCK` is present in pre-fix compile
 flags and absent in the fixed builds, avoiding a second lock/deadlock.
+The fixed qualification image was also flashed to the physical ESP32-S3;
+UART reports 8/8 pass, including both contended timeout cases. The small
+test's generic 8 MB header produces a ROM flash-size warning on the actual
+32 MB board, but the test executes successfully. It does not establish that
+the full Wi-Fi image boots.
 
 | Native image | Flash B | Linked RAM B | Notes |
 |---|---:|---:|---|
@@ -110,12 +145,29 @@ lines have no individual timestamps. Their spacing cannot be independently
 validated from this capture; add timestamps in both comparison arms before
 interpreting any future adjacent delta as exactly one second.
 
-The supplied Phase 3 ESP checkpoint remains 1,015,940 B flash, 262,120 B
-linked DRAM, 1,664 B unused control stack, zero steady ROS attempts, maximum
-middleware delta 25, no skipped release and successful typed stock-peer
-interoperability. **This is historical, not a fresh Milestone A hardware
-result.** No ESP serial device was visible during this run, so no board image
-was flashed or executed. Hardware resource and runtime deltas remain open.
+The supplied Phase 3 ESP static-control checkpoint remains 1,015,940 B
+flash, 262,120 B linked DRAM, 1,664 B unused control stack, zero steady ROS
+attempts, maximum middleware delta 25, no skipped release and successful
+typed stock-peer interoperability. **Its runtime figures are historical, not
+a fresh Milestone A run.** Fresh fixed-kernel static-control build/verification
+passes at 1,015,528 B flash and 261,960 B linked DRAM. Against the historical
+image figure these are -412 B flash and -160 B RAM, but the source/build
+provenance is not identical enough to attribute that difference solely to the
+kernel fix. Occupied RAM plus the separate 16,384 B reserve leaves 21,656 B
+of the 300,000 B budget. The Cyclone timeout relock workaround is absent.
+
+Fresh fixed-kernel ESP loopback builds at 712,548 B flash and 169,160 B
+linked RAM and **runs on the board**: `ROS2_ZEPHYR_LOOPBACK_PASS`, zero steady
+ROS allocation attempts, and zero live ROS/middleware allocations at cleanup.
+The full static-control image flashes with verified hash, but its UART trace
+ends after the ROM entry point, before the Zephyr boot banner. A pre-existing
+full static-control image from before this kernel patch shows the same stall;
+the small kernel test and the smaller loopback image both boot. An inadequate
+power supply for the larger image is plausible, not proven. The only USB
+device observed is the CP210x UART adapter; separate board 5 V power has
+been requested. No static-control READY or metrics line was observed, so the
+three planned 12-sample hardware windows and stock-peer interoperability
+remain **not run**, not passed. Both failed startup captures are retained.
 
 ## Frozen comparison policy before native DDSRT work
 
