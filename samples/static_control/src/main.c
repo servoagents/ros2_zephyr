@@ -298,6 +298,18 @@ int main(void)
         printf(" unused_bytes=%zu", control_stack_unused);
       }
       printf("\n");
+#ifdef STATIC_CONTROL_TIMING_PROBE
+      const struct static_control_timing timing = static_control_timing_read();
+      printf("STATIC_CONTROL_TIMING samples=%" PRIu32
+             " release_p50_us=%" PRIu32 " release_p95_us=%" PRIu32
+             " release_p99_us=%" PRIu32 " release_max_us=%" PRIu32
+             " completion_p50_us=%" PRIu32 " completion_p95_us=%" PRIu32
+             " completion_p99_us=%" PRIu32 " completion_max_us=%" PRIu32 "\n",
+             timing.samples, timing.release_p50_us, timing.release_p95_us,
+             timing.release_p99_us, timing.release_max_us,
+             timing.completion_p50_us, timing.completion_p95_us,
+             timing.completion_p99_us, timing.completion_max_us);
+#endif
       next_report_ms = now_ms + REPORT_PERIOD_MS;
     }
   }

@@ -1,0 +1,10 @@
+tests:
+  ros2_zephyr.ddsrt_native_sync:
+    platform_allow:
+      - native_sim/native/64
+      - esp32s3_devkitc/esp32s3/procpu
+    integration_platforms:
+      - native_sim/native/64
+    tags:
+      - ddsrt
+      - sync

@@ -3,6 +3,13 @@
 set(ros2_zephyr_backend_name "rmw_cyclonedds_c")
 set(ros2_zephyr_middleware_name "cyclonedds")
 set(ROS2_ZEPHYR_CYCLONEDDS_SOURCE "" CACHE PATH "Pinned Cyclone DDS source")
+option(ROS2_ZEPHYR_CYCLONEDDS_NATIVE_SYNC
+       "Select experimental native Zephyr DDSRT synchronization" OFF)
+if(ROS2_ZEPHYR_CYCLONEDDS_NATIVE_SYNC)
+  set(ros2_zephyr_ddsrt_sync "zephyr-native")
+else()
+  set(ros2_zephyr_ddsrt_sync "posix")
+endif()
 set(ROS2_ZEPHYR_HOST_IDLC "" CACHE FILEPATH "Host idlc executable")
 set(ROS2_ZEPHYR_RMW_CYCLONEDDS_C_SOURCE
     ""
@@ -118,6 +125,7 @@ ExternalProject_Add(
              -DENABLE_QOS_PROVIDER=OFF
              -DENABLE_LTO=OFF
              -DWITH_ZEPHYR=ON
+             -DWITH_ZEPHYR_NATIVE_SYNC=${ROS2_ZEPHYR_CYCLONEDDS_NATIVE_SYNC}
              -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
              -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
              -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}

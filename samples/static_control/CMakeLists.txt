@@ -33,6 +33,11 @@ target_sources(app PRIVATE src/main.c src/control.c src/plant.c)
 ros2_zephyr_add_generated_deployment(app)
 target_include_directories(app PRIVATE src)
 target_compile_options(app PRIVATE -Wall -Wextra -Werror)
+option(ROS2_ZEPHYR_STATIC_CONTROL_TIMING_PROBE
+       "Collect matched per-release and completion timing histograms" OFF)
+if(ROS2_ZEPHYR_STATIC_CONTROL_TIMING_PROBE)
+  target_compile_definitions(app PRIVATE STATIC_CONTROL_TIMING_PROBE=1)
+endif()
 
 if(CONFIG_WIFI)
   function(escape_c_string output input)

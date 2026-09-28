@@ -60,6 +60,19 @@ class ResourceVerificationTest(unittest.TestCase):
         self.assertEqual(plan["planned"]["known_ram_slices_bytes"], 120512)
         self.assertIsNone(plan["planned"]["heap_backing"][-1]["bytes"])
 
+    def test_sync_selection_is_carried_into_postlink_report(self) -> None:
+        plan = resources.build_prelink_plan(
+            self.deployment_plan, self.config, self.target, "zephyr-native"
+        )
+        self.assertEqual(plan["ddsrt_sync"], "zephyr-native")
+        linked = {
+            "flash_bytes": 1013044,
+            "static_ram_bytes": 262216,
+            "memory_regions": {},
+        }
+        report = resources.build_postlink_report(plan, linked, {"status": "not_provided"})
+        self.assertEqual(report["ddsrt_sync"], "zephyr-native")
+
     def test_worker_contract_rejects_configuration_above_maximum(self) -> None:
         plan_input = copy.deepcopy(self.deployment_plan)
         plan_input["deployment"]["resources"]["workers"]["maximum"] = 4

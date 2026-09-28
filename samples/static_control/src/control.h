@@ -36,6 +36,21 @@ bool static_control_submit(const struct static_control_command *command, int64_t
 struct static_control_state static_control_read_state(void);
 bool static_control_stack_space(size_t *unused_bytes);
 
+#ifdef STATIC_CONTROL_TIMING_PROBE
+struct static_control_timing {
+  uint32_t samples;
+  uint32_t release_p50_us;
+  uint32_t release_p95_us;
+  uint32_t release_p99_us;
+  uint32_t release_max_us;
+  uint32_t completion_p50_us;
+  uint32_t completion_p95_us;
+  uint32_t completion_p99_us;
+  uint32_t completion_max_us;
+};
+struct static_control_timing static_control_timing_read(void);
+#endif
+
 #ifdef STATIC_CONTROL_TEST
 void static_control_test_delay_next_cycle(uint32_t delay_ms);
 #endif

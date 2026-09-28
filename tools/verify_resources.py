@@ -156,6 +156,7 @@ def build_prelink_plan(
     deployment_plan: dict[str, object],
     config: dict[str, str],
     target: str,
+    ddsrt_sync: str = "not-applicable",
 ) -> dict[str, object]:
     if deployment_plan.get("schema_version") != 2:
         reject("E_RESOURCE_INPUT", "deployment plan schema_version must be 2")
@@ -164,6 +165,8 @@ def build_prelink_plan(
     backend = deployment_plan.get("backend")
     if not isinstance(deployment, dict) or not isinstance(capability, dict) or not isinstance(backend, str):
         reject("E_RESOURCE_INPUT", "deployment plan is missing deployment, capability, or backend")
+    if backend == "rmw_cyclonedds_c" and ddsrt_sync not in ("posix", "zephyr-native", "not-applicable"):
+        reject("E_RESOURCE_INPUT", f"invalid DDSRT synchronization selection {ddsrt_sync}")
     resources = deployment.get("resources")
     endpoints = deployment.get("endpoints")
     if not isinstance(resources, dict) or not isinstance(endpoints, list):
@@ -301,6 +304,7 @@ def build_prelink_plan(
         "status": "FAIL" if failed else "PASS",
         "target": target,
         "backend": backend,
+        "ddsrt_sync": ddsrt_sync,
         "deployment": deployment.get("name"),
         "budgets": {
             "flash_bytes": flash_budget,
@@ -635,6 +639,7 @@ def build_postlink_report(
         "status": "FAIL" if failed else "PASS",
         "target": resource_plan["target"],
         "backend": resource_plan["backend"],
+        "ddsrt_sync": resource_plan.get("ddsrt_sync", "not-applicable"),
         "deployment": resource_plan["deployment"],
         "planned": resource_plan["planned"],
         "budgets": budgets,
@@ -661,6 +666,7 @@ def plan_markdown(plan: dict[str, object]) -> str:
         f"Deployment: {plan['deployment']}",
         f"Target: {plan['target']}",
         f"Backend: {plan['backend']}",
+        f"DDSRT synchronization: {plan.get('ddsrt_sync', 'not-applicable')}",
         "",
         "## Contract",
         "",
@@ -707,6 +713,7 @@ def report_markdown(report: dict[str, object]) -> str:
         f"Deployment: {report['deployment']}",
         f"Target: {report['target']}",
         f"Backend: {report['backend']}",
+        f"DDSRT synchronization: {report.get('ddsrt_sync', 'not-applicable')}",
         "",
         "## Planned versus linked",
         "",
@@ -766,6 +773,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     plan.add_argument("--deployment-plan", type=Path, required=True)
     plan.add_argument("--config", type=Path, required=True)
     plan.add_argument("--target", required=True)
+    plan.add_argument("--ddsrt-sync", choices=("posix", "zephyr-native", "not-applicable"),
+                      default="not-applicable")
     plan.add_argument("--json", type=Path, required=True)
     plan.add_argument("--markdown", type=Path, required=True)
     verify = subparsers.add_parser("verify", help="verify linked artifacts against a resource plan")
@@ -785,6 +794,7 @@ def main(argv: list[str] | None = None) -> int:
                 load_json(args.deployment_plan),
                 parse_config(args.config),
                 args.target,
+                args.ddsrt_sync,
             )
             markdown = plan_markdown(report)
             marker = "ROS2_ZEPHYR_RESOURCE_PLAN"

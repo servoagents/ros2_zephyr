@@ -6,6 +6,9 @@ set(ROS2_ZEPHYR_AR "${CMAKE_AR}")
 set(ROS2_ZEPHYR_RANLIB "${CMAKE_RANLIB}")
 
 if(ROS2_ZEPHYR_DEPLOYMENT_PLAN)
+  if(NOT DEFINED ros2_zephyr_ddsrt_sync)
+    set(ros2_zephyr_ddsrt_sync "not-applicable")
+  endif()
   set(ros2_zephyr_resource_tool
       "${CMAKE_CURRENT_LIST_DIR}/../tools/verify_resources.py"
   )
@@ -31,6 +34,7 @@ if(ROS2_ZEPHYR_DEPLOYMENT_PLAN)
       --deployment-plan "${ROS2_ZEPHYR_DEPLOYMENT_PLAN}"
       --config "${CMAKE_BINARY_DIR}/zephyr/.config"
       --target "${CONFIG_BOARD_TARGET}"
+      --ddsrt-sync "${ros2_zephyr_ddsrt_sync}"
       --json "${ros2_zephyr_resource_plan}"
       --markdown "${ros2_zephyr_resource_plan_markdown}"
     RESULT_VARIABLE resource_plan_result
