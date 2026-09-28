@@ -67,9 +67,17 @@ if(KERNEL_VERSION_MAJOR EQUAL 4
    AND KERNEL_VERSION_MINOR EQUAL 4
    AND KERNEL_PATCHLEVEL LESS_EQUAL 2
 )
-  string(APPEND cyclonedds_zephyr_workarounds
-         " -DCYCLONEDDS_ZEPHYR_CONDVAR_TIMEOUT_RELOCK=1"
+  execute_process(
+    COMMAND git -C "${ZEPHYR_BASE}" apply --reverse --check
+            "${CMAKE_CURRENT_LIST_DIR}/../../patches/zephyr-condvar-timeout-relock.patch"
+    RESULT_VARIABLE ros2_zephyr_condvar_fix_result
+    OUTPUT_QUIET ERROR_QUIET
   )
+  if(NOT ros2_zephyr_condvar_fix_result EQUAL 0)
+    string(APPEND cyclonedds_zephyr_workarounds
+           " -DCYCLONEDDS_ZEPHYR_CONDVAR_TIMEOUT_RELOCK=1"
+    )
+  endif()
 endif()
 string(APPEND ros2_zephyr_common_definitions
        " -D__STDC_WANT_LIB_EXT1__=1 -D_DEFAULT_SOURCE=1"

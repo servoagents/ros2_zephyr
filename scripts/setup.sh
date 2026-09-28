@@ -73,8 +73,11 @@ if [[ "${actual_version}" != "${zephyr_version}" ]]; then
 fi
 
 west update --narrow hal_espressif mbedtls picolibc tf-psa-crypto
+"${repository_root}/scripts/apply_zephyr_condvar_patch.sh" "${workspace}/zephyr"
 python -m pip install \
   -r zephyr/scripts/requirements-base.txt \
+  -r zephyr/scripts/requirements-build-test.txt \
+  -r zephyr/scripts/requirements-run-test.txt \
   -r modules/hal/espressif/zephyr/requirements.txt \
   catkin-pkg \
   colcon-common-extensions \

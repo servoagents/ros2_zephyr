@@ -9,5 +9,6 @@ repositories:
     version: ed4fd513a24a53b93d548d342cb7aa0a18716f04
   eclipse/cyclonedds:
     type: git
-    url: https://github.com/eclipse-cyclonedds/cyclonedds.git
+    url: https://github.com/fj-blanco/cyclonedds.git
+    # Local experimental branch: zephyr-native-ddsrt; use the exact accepted SHA.
     version: 2f0d07d241f62f7121749b46721049e4dea5c58b
