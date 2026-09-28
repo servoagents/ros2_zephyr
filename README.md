@@ -58,6 +58,12 @@ The RMW selection boundary and backend capability table are recorded in
 The fixed endpoint description, generated build artifacts, and rejection
 rules are documented in
 [the deployment compiler guide](docs/deployment-compiler.md).
+Phase 4's experimental Cyclone DDS fork is pinned to an exact commit; native
+DDSRT synchronization is opt-in with
+`ROS2_ZEPHYR_CYCLONEDDS_NATIVE_SYNC=ON`. The default remains POSIX, and
+Cyclone DDS threads remain POSIX even with this option. See
+[the Milestone B checkpoint](docs/native-ddsrt-sync-checkpoint.md) for the
+ESP32-S3 comparison, limits, and remaining work.
 The first measured middleware optimization and its steady-state allocation
 regression are documented in
 [the fixed wait-set note](docs/fixed-waitset.md).
