@@ -1,0 +1,26 @@
+--- a/src/core/ddsi/src/ddsi_freelist.c
++++ b/src/core/ddsi/src/ddsi_freelist.c
+@@ -260,6 +260,23 @@
+     {
+       ddsrt_mutex_unlock (&fl->lock);
+       ddsrt_mutex_unlock (&fl->inner[k].lock);
++      /* A producer and consumer may use different magazines. Waiting for a
++         producer to fill an entire magazine strands reusable objects and can
++         cause substantial heap growth in low-volume, long-lived domains.
++         On this cold path, borrow one object from another partial magazine.
++         Hold only one lock at a time, so concurrent borrowers cannot deadlock.
++         The local and full-magazine fast paths above remain unchanged. */
++      for (int i = 1; i < NN_FREELIST_NPAR; i++)
++      {
++        const int other = (k + i) % NN_FREELIST_NPAR;
++        ddsrt_mutex_lock (&fl->inner[other].lock);
++        void *e = NULL;
++        if (fl->inner[other].count > 0)
++          e = fl->inner[other].m->x[--fl->inner[other].count];
++        ddsrt_mutex_unlock (&fl->inner[other].lock);
++        if (e != NULL)
++          return e;
++      }
+       return NULL;
+     }
+     else

@@ -9,7 +9,7 @@ if [[ ! -e "${source_dir}/.git" ]]; then
   exit 2
 fi
 
-for patch in cyclonedds-zephyr-4.4 cyclonedds-log-buffer; do
+for patch in cyclonedds-zephyr-4.4 cyclonedds-log-buffer cyclonedds-partial-magazines; do
   patch_file="${repository_root}/patches/${patch}.patch"
   if git -C "${source_dir}" apply --check "${patch_file}" 2>/dev/null; then
     git -C "${source_dir}" apply "${patch_file}"
