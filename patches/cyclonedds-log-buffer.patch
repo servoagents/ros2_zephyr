@@ -1,0 +1,115 @@
+diff --git a/src/ddsrt/CMakeLists.txt b/src/ddsrt/CMakeLists.txt
+index 4acfe61d..fd9d843f 100644
+--- a/src/ddsrt/CMakeLists.txt
++++ b/src/ddsrt/CMakeLists.txt
+@@ -27,6 +27,11 @@ if(WITH_ZEPHYR_NATIVE_SYNC AND NOT WITH_ZEPHYR)
+   message(FATAL_ERROR "WITH_ZEPHYR_NATIVE_SYNC requires WITH_ZEPHYR")
+ endif()
+ 
++set(DDSRT_LOG_BUFFER_SIZE 2048 CACHE STRING "Per-thread DDSRT diagnostic buffer size in bytes")
++if(NOT DDSRT_LOG_BUFFER_SIZE MATCHES "^[0-9]+$" OR DDSRT_LOG_BUFFER_SIZE LESS 64)
++  message(FATAL_ERROR "DDSRT_LOG_BUFFER_SIZE must be an integer of at least 64 bytes")
++endif()
++
+ set(source_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+ set(binary_dir "${CMAKE_CURRENT_BINARY_DIR}")
+ 
+diff --git a/src/ddsrt/include/dds/config.h.in b/src/ddsrt/include/dds/config.h.in
+index dbd286f3..1ab4f496 100644
+--- a/src/ddsrt/include/dds/config.h.in
++++ b/src/ddsrt/include/dds/config.h.in
+@@ -13,6 +13,8 @@
+ 
+ #cmakedefine DDSRT_WITH_LWIP 1
+ #cmakedefine DDSRT_WITH_FREERTOS 1
++#define DDSRT_LOG_BUFFER_SIZE @DDSRT_LOG_BUFFER_SIZE@
++
+ #cmakedefine DDSRT_WITH_ZEPHYR_NATIVE_SYNC 1
+ 
+ #cmakedefine DDSRT_HAVE_DYNLIB 1
+diff --git a/src/ddsrt/src/log.c b/src/ddsrt/src/log.c
+index 4afb1dcb..001e26e2 100644
+--- a/src/ddsrt/src/log.c
++++ b/src/ddsrt/src/log.c
+@@ -14,6 +14,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++#include "dds/config.h"
+ #include "dds/ddsrt/log.h"
+ #include "dds/ddsrt/sync.h"
+ #include "dds/ddsrt/threads.h"
+@@ -26,8 +27,10 @@
+ 
+ #define BUF_OFFSET HDR_LEN
+ 
++DDSRT_STATIC_ASSERT (DDSRT_LOG_BUFFER_SIZE >= 64);
++
+ typedef struct {
+-  char buf[2048];
++  char buf[DDSRT_LOG_BUFFER_SIZE];
+   size_t pos;
+ } log_buffer_t;
+ 
+@@ -242,15 +245,17 @@ static void vlog1 (const struct ddsrt_log_cfg_impl *cfg, uint32_t cat, uint32_t
+     if (n >= 0 && (size_t) n < nrem) {
+       lb->pos += (size_t) n;
+     } else {
+-      lb->pos += nrem;
++      /* Keep one byte for the terminator, including after truncation. */
++      lb->pos += nrem - 1;
+       trunc = 1;
+     }
+     if (trunc) {
+       static const char msg[] = "(trunc)\n";
+       const size_t msglen = sizeof (msg) - 1;
+-      assert (lb->pos <= sizeof (lb->buf));
++      assert (lb->pos < sizeof (lb->buf));
+       assert (lb->pos >= msglen);
+       memcpy (lb->buf + lb->pos - msglen, msg, msglen);
++      lb->buf[lb->pos] = 0;
+     }
+   }
+ 
+diff --git a/src/ddsrt/tests/log.c b/src/ddsrt/tests/log.c
+index 58c424ff..462dba57 100644
+--- a/src/ddsrt/tests/log.c
++++ b/src/ddsrt/tests/log.c
+@@ -19,6 +19,7 @@
+ #include <AvailabilityMacros.h>
+ #endif /* __APPLE__ */
+ 
++#include "dds/config.h"
+ #include "CUnit/Test.h"
+ #include "CUnit/Theory.h"
+ #include "dds/ddsrt/heap.h"
+@@ -322,6 +323,29 @@ CU_Test(dds_log, newline_terminates, .fini=reset)
+ #endif
+ }
+ 
++/* The truncated record must still be a terminated string for custom sinks. */
++CU_Test(dds_log, truncated_record_terminated, .fini=reset)
++{
++#if HAVE_FMEMOPEN
++  char *msg = NULL;
++  const size_t input_size = (size_t) DDSRT_LOG_BUFFER_SIZE * 2;
++  char *input = ddsrt_malloc(input_size);
++  CU_ASSERT_NEQ_FATAL(input, NULL);
++  memset(input, 'x', input_size - 1);
++  input[input_size - 1] = 0;
++
++  dds_set_log_sink(&copy, &msg);
++  DDS_ERROR("%s\n", input);
++  CU_ASSERT_NEQ_FATAL(msg, NULL);
++  size_t len = strlen(msg);
++  CU_ASSERT_LT(len, (size_t) DDSRT_LOG_BUFFER_SIZE);
++  CU_ASSERT_GT_FATAL(len, sizeof("(trunc)\n") - 2);
++  CU_ASSERT_STREQ(msg + len - (sizeof("(trunc)\n") - 1), "(trunc)\n");
++  ddsrt_free(input);
++  ddsrt_free(msg);
++#endif
++}
++
+ /* Nothing must be written unless a category is enabled. */
+ CU_Test(dds_log, disabled_categories_discarded, .fini=reset)
+ {

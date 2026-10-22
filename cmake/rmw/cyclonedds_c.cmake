@@ -3,6 +3,7 @@
 set(ros2_zephyr_backend_name "rmw_cyclonedds_c")
 set(ros2_zephyr_middleware_name "cyclonedds")
 set(ROS2_ZEPHYR_CYCLONEDDS_SOURCE "" CACHE PATH "Pinned Cyclone DDS source")
+set(ROS2_ZEPHYR_CYCLONEDDS_LOG_BUFFER_SIZE 2048 CACHE STRING "DDSRT per-thread diagnostic capacity")
 option(ROS2_ZEPHYR_CYCLONEDDS_NATIVE_SYNC
        "Select experimental native Zephyr DDSRT synchronization" OFF)
 if(ROS2_ZEPHYR_CYCLONEDDS_NATIVE_SYNC)
@@ -126,6 +127,7 @@ ExternalProject_Add(
              -DENABLE_LTO=OFF
              -DWITH_ZEPHYR=ON
              -DWITH_ZEPHYR_NATIVE_SYNC=${ROS2_ZEPHYR_CYCLONEDDS_NATIVE_SYNC}
+             -DDDSRT_LOG_BUFFER_SIZE=${ROS2_ZEPHYR_CYCLONEDDS_LOG_BUFFER_SIZE}
              -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
              -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
              -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
