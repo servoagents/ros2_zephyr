@@ -55,6 +55,9 @@ host_idlc_library_directory="$(cd "${host_idlc_directory}/../lib" && pwd)"
 export PATH="${host_idlc_directory}:${PATH}"
 export LD_LIBRARY_PATH="${host_idlc_library_directory}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
+read -r -a extra_packages <<< "${ROS2_ZEPHYR_EXTRA_PACKAGES:-}"
+type_packages=ros2_zephyr_test_msgs
+for package in "${extra_packages[@]}"; do type_packages+=";$package"; done
 colcon --log-base "${ROS2_ZEPHYR_WORK_ROOT}/log" build \
   --base-paths "${TARGET_SRC}" \
   --build-base "${TARGET_BUILD}" \
@@ -62,7 +65,7 @@ colcon --log-base "${ROS2_ZEPHYR_WORK_ROOT}/log" build \
   --merge-install \
   --executor sequential \
   --cmake-force-configure \
-  --packages-up-to rclc ros2_zephyr_test_msgs rmw_cyclonedds_c \
+  --packages-up-to rclc ros2_zephyr_test_msgs rmw_cyclonedds_c "${extra_packages[@]}" \
   --packages-skip-by-dep python_cmake_module \
   --metas "${ROS2_ZEPHYR_MODULE_DIR}/colcon.meta" \
   --cmake-args \
@@ -81,7 +84,7 @@ colcon --log-base "${ROS2_ZEPHYR_WORK_ROOT}/log" build \
   -DRMW_IMPLEMENTATION=rmw_cyclonedds_c \
   -DRMW_IMPLEMENTATION_DISABLE_RUNTIME_SELECTION=ON \
   -DRCL_LOGGING_IMPLEMENTATION=rcl_logging_noop \
-  -DROSIDL_TYPESUPPORT_CYCLONEDDS_C_GENERATE_PACKAGES=ros2_zephyr_test_msgs \
+  -DROSIDL_TYPESUPPORT_CYCLONEDDS_C_GENERATE_PACKAGES="${type_packages}" \
   -DRMW_CYCLONEDDS_C_DEFAULT_DOMAIN_ID="${ROS2_ZEPHYR_DOMAIN_ID}" \
   -DRMW_CYCLONEDDS_C_GRAPH_MAX_NODES="${ROS2_ZEPHYR_GRAPH_MAX_LOCAL_NODES}" \
   -DRMW_CYCLONEDDS_C_GRAPH_MAX_ENDPOINTS_PER_NODE="${ROS2_ZEPHYR_GRAPH_MAX_ENDPOINTS_PER_NODE}" \

@@ -45,6 +45,7 @@ for ignored_package in \
   [[ ! -d "${ignored_package}" ]] || touch "${ignored_package}/COLCON_IGNORE"
 done
 
+read -r -a extra_packages <<< "${ROS2_ZEPHYR_EXTRA_PACKAGES:-}"
 colcon --log-base "${ROS2_ZEPHYR_WORK_ROOT}/log" build \
   --base-paths "${TARGET_SRC}" \
   --build-base "${TARGET_BUILD}" \
@@ -52,7 +53,7 @@ colcon --log-base "${ROS2_ZEPHYR_WORK_ROOT}/log" build \
   --merge-install \
   --executor sequential \
   --cmake-force-configure \
-  --packages-up-to rclc ros2_zephyr_test_msgs rmw_zenoh_pico \
+  --packages-up-to rclc ros2_zephyr_test_msgs rmw_zenoh_pico "${extra_packages[@]}" \
   --packages-skip-by-dep python_cmake_module \
   --metas "${ROS2_ZEPHYR_MODULE_DIR}/colcon.meta" \
   --cmake-args \
