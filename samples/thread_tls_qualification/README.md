@@ -1,6 +1,6 @@
 # Zephyr compiler TLS qualification
 
-Milestone C requires isolated `__thread` storage: Cyclone DDS uses it for its
+Native DDSRT threads require isolated `__thread` storage: Cyclone DDS uses it for its
 DDSI thread-state pointer, logging buffer and freelist state. This standalone
 Zephyr test runs the same worker body with native `k_thread` and Zephyr
 `pthread_create`. Each pair synchronizes at startup, then makes 2,000
@@ -28,6 +28,6 @@ The test prints one `THREAD_TLS_CASE` line per API and a final
 addresses, stable values, zero mismatches, and no handoff timeouts. On the
 pinned ESP32-S3 toolchain both APIs failed this test in four hardware runs;
 `native_sim` passed both. See the
-[Milestone C gate report](../../docs/native-ddsrt-thread-gate.md). Do not
+[ESP32-S3 TLS results](../../docs/compiler-tls.md). Do not
 enable native DDSRT threads on a failing target merely because a host
 simulator passes.

@@ -1,6 +1,6 @@
-# Phase 4 Milestone C gate: ESP32-S3 compiler TLS
+# ESP32-S3 compiler TLS qualification
 
-Status: **stop native DDSRT thread implementation on this target**. The
+Native DDSRT threads require isolated compiler TLS on this target. The
 standalone qualification test demonstrates that `__thread` storage aliases
 across main, native Zephyr workers, and Zephyr pthread workers on the pinned
 ESP32-S3 build. No Cyclone source was modified during this check. The accepted
@@ -15,7 +15,7 @@ TLS isolation and cannot establish it.
   present in the workspace; this test does not use condition variables.
 - Cyclone fork branch `zephyr-native-ddsrt` remains at
   `31e9ea8a255092eab29cea6d3ee6505410c903a5`. The existing RMW pin and
-  all accepted Milestone B changes are untouched.
+  the native synchronization changes are untouched.
 - `samples/thread_tls_qualification` uses one `static __thread volatile
   uint32_t` and the same worker body for two native `k_thread` workers, then
   two Zephyr `pthread_create` workers. The main thread initializes its own
@@ -81,15 +81,10 @@ TLS base on context switches, architecture capability selection and the
 standard kernel TLS tests. This is an architecture/toolchain task, not a
 small DDSRT thread-lifecycle patch.
 
-## Decision
+## Limitation
 
-Milestone C is paused under the Phase 4 stop rule: preserving required
-per-thread behavior on ESP32-S3 would require a broader Zephyr TLS port or
-invasive DDS-core/toolchain emulation. Do **not** implement a Cyclone TLS
-workaround or claim that keeping pthread workers solves this on the tested
-configuration. The smallest justified next task is to qualify or add proper
-Xtensa/ESP32-S3 TLS support in Zephyr as a separate, explicitly scoped
-milestone, then rerun this probe and the accepted Cyclone workloads before
-resuming native DDSRT thread lifecycle work. Milestone B native
-synchronization remains an independent, measured intermediate result, but
-the earlier whole-workload acceptance should not be read as a TLS proof.
+Native DDSRT threading is unsupported on this ESP32-S3 toolchain. The
+standalone probe must pass on a TLS-capable Zephyr/SDK configuration before
+Cyclone thread lifecycle work can be qualified. The existing native
+synchronization option is independent of this requirement; earlier ROS
+application tests do not establish DDSI thread-state isolation.

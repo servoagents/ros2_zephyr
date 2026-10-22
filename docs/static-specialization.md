@@ -51,14 +51,14 @@ On the ESP32-S3, the specialized UART-console image joined Wi-Fi, reached
 READY, and reported zero ROS steady-state allocation attempts. The known
 filesystem mount and Cyclone worker thread-registration diagnostics remain unchanged.
 
-This is the first useful Milestone C reduction, so specialization stops at the
+The measured specialization stops at the
 optional-action boundary. Graph and logging specialization remain separate
 future experiments because they change declared semantics or diagnostic
-coverage and are not needed to satisfy this milestone's exit condition.
+coverage and are outside the tested profile.
 
 ## First deeper optimization
 
-Milestone E traced the largest remaining recurring allocation source to
+The largest remaining recurring allocation source was traced to
 Cyclone wait-set observer registration. The fixed deployment now reuses an
 unchanged attachment set while retaining the ordinary detach/attach path when
 the requested entities change. The exact call path, ownership argument,

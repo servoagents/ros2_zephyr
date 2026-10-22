@@ -1,6 +1,6 @@
 # Fixed Cyclone wait-set attachments
 
-Milestone E optimizes the largest recurring allocation source measured after
+This change addresses the largest recurring allocation source measured after
 the fixed-deployment and resource-contract work. It does not add a new runtime
 or change the ROS boundary: the application still uses rclc, rcl,
 `rmw_cyclonedds_c`, standard message definitions, and stock DDS peers.
@@ -99,6 +99,5 @@ sequence 17, reported no rejection, and alternated ACTIVE and STALE according
 to the existing 250 ms command-expiry policy. This confirms that persistent
 wait-set attachment does not change message, QoS, or command-expiry semantics.
 
-This is the first meaningful Milestone E optimization. Per the phase plan,
-deeper work stops here until the remaining discovery/publication allocations
-are selected as a separate measured target.
+The fixed wait-set is the first measured reduction in this path.
+Remaining discovery and publication allocations need a separate measurement.

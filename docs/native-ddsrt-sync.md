@@ -1,17 +1,15 @@
-# Phase 4 Milestone B: selectable native DDSRT synchronization
+# Zephyr-native DDSRT synchronization
 
-Status: **qualified intermediate checkpoint**. Native Zephyr synchronization is
-selectable and passes the tested static-control workload on `native_sim` and
+Native Zephyr synchronization is selectable and passes the tested static-control workload on `native_sim` and
 ESP32-S3. Cyclone DDS threads, clocks, sockets and several other DDSRT services
-remain POSIX-backed. This is **not** a native-thread or POSIX-free port. Stop
-here before Milestone C thread lifecycle work.
+remain POSIX-backed. This is not a native-thread or POSIX-free port.
 
 ## Revisions and selection
 
 - Cyclone fork `fj-blanco/cyclonedds`, branch `zephyr-native-ddsrt`, exact
   published commit `31e9ea8a255092eab29cea6d3ee6505410c903a5`.
   `193e9c38` adds the already accepted Zephyr 4.4 compatibility changes;
-  `31e9ea8a` adds native sync. Both descend directly from accepted Phase 3
+  `31e9ea8a` adds native sync. Both descend directly from the prior integration
   pin `2f0d07d241f62f7121749b46721049e4dea5c58b`. No unrelated rebase.
 - `dependencies/platform.repos` pins that published SHA; the staged checkout
   is clean at it. The compatibility-patch setup script detects the committed
@@ -108,8 +106,7 @@ The controlled native-simulator static images linked at 719,984 B flash /
 1,224,121 B RAM (POSIX) and 719,423 B flash / 1,223,885 B RAM (native
 sync): native sync was 561 B smaller in flash and 236 B smaller in RAM for
 that pairing. These small differences do **not** imply removal of the Zephyr
-POSIX thread/cond/mutex pools; those configured capacities remain. The
-earlier Phase 3 image is a different provenance and is not used as this
+POSIX thread/cond/mutex pools; those configured capacities remain. An earlier image has different provenance and is excluded from this
 size comparison.
 
 An optional `ROS2_ZEPHYR_STATIC_CONTROL_TIMING_PROBE=ON` records timer
@@ -128,14 +125,9 @@ observation, not a hard real-time guarantee. The instrumented POSIX image
 used 1,012,964 B flash / 262,800 B RAM; native used 1,013,232 B /
 263,056 B. Do not compare their image sizes with the uninstrumented pair.
 
-Full build artifacts, reports, Twister output, UART traces and timing logs
-are retained under ignored `build/phase4-b/`. In particular, use
-`native-sync-static-esp32s3-final.log`,
-`native-sync-timing-esp32s3-final-{1,2,3}.log`,
-`posix-timing-esp32s3-valid-{1,2,3}.log`, and
-`native-sync-twister-final/twister.json`. Wi-Fi credentials are not in this
-document or tracked source. The board was flashed with the final
-instrumented native-sync image for the timing run.
+Build reports, test output and UART traces were kept in local `build/`
+directories; they are not part of the source release. The board ran the
+instrumented native-sync image for the timing comparison.
 
 ## Reproduce and decision
 
@@ -151,10 +143,7 @@ probe flag only for matched instrumentation runs. Compare with
 `python tools/check_static_control_timing.py --posix <three logs> --native
 <three logs> --minimum-records 12 --maximum-regression-us 1000`.
 
-Decision: **useful partial native port**, subject to maintainer review of the
-rwlock fairness/nested-read policy and broader stress coverage. It removes
-Cyclone DDS's POSIX synchronization calls from the selected DDSRT sync object
-without regressing the accepted workload or violating resource limits. It
-does not yet justify claiming native DDSRT threading. Milestone C should
-design explicit thread ownership, join/result and stack lifecycle separately
-after this report is reviewed.
+This is a partial native port. The reader/writer lock fairness and nested-read
+policy need maintainer review and broader stress coverage. Native DDSRT
+threading still requires explicit ownership, join-result and stack-lifecycle
+design, plus target TLS qualification.

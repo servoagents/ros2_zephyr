@@ -8,7 +8,7 @@ below, not to arbitrary ROS 2 or Zephyr applications.
 - Baseline `ros2_zephyr`: `f35adf1ee55f1fe78bef0687750b190505e4e857`
   (`v0.1.0-alpha.2`)
 - Candidate base `ros2_zephyr`: `42ed548d132fd151bffb7a06585a0d7af32c3180`,
-  plus the Phase 2 completion changes described here
+  plus the changes described here
 - Zephyr 4.4.0; Zephyr SDK 1.0.1
 - Cyclone DDS: `2f0d07d241f62f7121749b46721049e4dea5c58b`
 - RMW: the pinned Lyrical target source; no change was made to the separate
@@ -179,8 +179,7 @@ was also tried but is not an accepted comparison: its graph message uses a
 24-byte GID while the Lyrical target uses 16 bytes. Data-topic communication
 with Humble remains supported and was used for the control stimulus.
 
-The three implementation steps are complete for the prototype's supported
-scope. Physical access-point power cycling remains explicitly not run, and
+The prototype covers the supported scope. Physical access-point power cycling remains explicitly not run, and
 Cyclone's mandatory internal allocation failure remains a documented upstream
 limitation rather than an application cleanup result.
 
