@@ -535,7 +535,21 @@ def measure_linked(build_dir: Path) -> dict[str, object]:
     else:
         flash_bytes = sum(section.size for section in sections if section.occupies_flash)
         flash_source = "ELF allocated file-backed sections"
-    if "dram0_0_seg" in regions:
+    if config.get("CONFIG_SOC_ESP32C6_HPCORE") == "y" and "sram0_0_seg" in regions:
+        # C6 aliases flash into writable-looking ELF sections. Count physical
+        # SRAM spans (including holes), not flags across address aliases.
+        ram_bytes = 0
+        for name in ("sram0_0_seg", "lp_ram_seg"):
+            region = regions.get(name)
+            if region is None:
+                continue
+            origin = region["origin"]
+            end = max((section.address + section.size for section in sections
+                       if section.alloc and origin <= section.address < origin + region["length"]),
+                      default=origin)
+            ram_bytes += end - origin
+        ram_source = "C6 physical SRAM spans including alignment holes"
+    elif "dram0_0_seg" in regions:
         ram_bytes = region_usage(sections, regions["dram0_0_seg"])
         ram_source = "map region dram0_0_seg"
     else:
@@ -545,7 +559,11 @@ def measure_linked(build_dir: Path) -> dict[str, object]:
     libc_heap = None
     libc_heap_source = "linker symbol"
     match = re.search(r"0x([0-9a-fA-F]+)\s+_libc_heap_size\s*=", map_text)
-    if match:
+    configured_libc_heap = integer_config(config, "CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE")
+    if configured_libc_heap is not None and configured_libc_heap >= 0:
+        libc_heap = configured_libc_heap
+        libc_heap_source = "CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE"
+    elif match:
         libc_heap = int(match.group(1), 16)
     else:
         configured_libc_heap = integer_config(
@@ -623,13 +641,14 @@ def build_postlink_report(
                 "declared flash budget must fit the linked target region",
             )
         )
-    if "dram0_0_seg" in regions:
+    ram_region = regions.get("sram0_0_seg") or regions.get("dram0_0_seg")
+    if ram_region is not None:
         checks.append(
             make_check(
                 "ram_budget_within_target_region",
                 "E_RESOURCE_TARGET_CAPACITY",
                 budgets["ram_bytes"],
-                regions["dram0_0_seg"]["length"],
+                ram_region["length"],
                 "declared RAM budget must fit the linked target region",
             )
         )

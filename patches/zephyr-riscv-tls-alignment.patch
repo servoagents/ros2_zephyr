@@ -1,0 +1,25 @@
+diff --git a/arch/riscv/core/tls.c b/arch/riscv/core/tls.c
+index e9760a5560c..5eb8b925175 100644
+--- a/arch/riscv/core/tls.c
++++ b/arch/riscv/core/tls.c
+@@ -22,7 +22,12 @@ size_t arch_tls_stack_setup(struct k_thread *new_thread, char *stack_ptr)
+ 	 * Since we are populating things backwards,
+ 	 * setup the TLS data/bss area first.
+ 	 */
+-	stack_ptr -= z_tls_data_size();
++	char *stack_end = stack_ptr;
++	const size_t alignment = MAX((size_t)(uintptr_t)__tdata_align,
++				     (size_t)(uintptr_t)__tbss_align);
++
++	stack_ptr = (char *)ROUND_DOWN((uintptr_t)stack_ptr - z_tls_data_size(),
++				      alignment);
+ 	z_tls_copy(stack_ptr);
+ 
+ 	/*
+@@ -31,5 +36,5 @@ size_t arch_tls_stack_setup(struct k_thread *new_thread, char *stack_ptr)
+ 	 */
+ 	new_thread->tls = POINTER_TO_UINT(stack_ptr);
+ 
+-	return z_tls_data_size();
++	return stack_end - stack_ptr;
+ }

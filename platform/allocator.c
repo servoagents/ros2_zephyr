@@ -38,7 +38,7 @@ static allocation_state_t allocation_states[] = {
     {ROS2_ZEPHYR_ALLOCATION_MIDDLEWARE, MIDDLEWARE_EXTERNAL_ALLOCATION_MIN, {0}},
 };
 static struct k_spinlock allocation_metrics_lock;
-#if defined(CONFIG_ROS2_ZEPHYR_TEST_ROS_ALLOCATION_FAILURE_AT) && \
+#if defined(CONFIG_ROS2_ZEPHYR_TEST_ROS_ALLOCATION_FAILURE_AT) &&                                  \
     CONFIG_ROS2_ZEPHYR_TEST_ROS_ALLOCATION_FAILURE_AT > 0
 static size_t ros_allocation_attempts;
 #endif
@@ -68,8 +68,8 @@ static void metrics_add(allocation_state_t *state, size_t size)
   k_spin_unlock(&allocation_metrics_lock, key);
 }
 
-ros2_zephyr_allocation_metrics_t ros2_zephyr_allocation_metrics(
-    ros2_zephyr_allocation_domain_t domain)
+ros2_zephyr_allocation_metrics_t
+ros2_zephyr_allocation_metrics(ros2_zephyr_allocation_domain_t domain)
 {
   allocation_state_t *state = state_for_domain(domain);
   k_spinlock_key_t key = k_spin_lock(&allocation_metrics_lock);
@@ -80,19 +80,18 @@ ros2_zephyr_allocation_metrics_t ros2_zephyr_allocation_metrics(
 
 static void report_allocation_failure(allocation_state_t *state, size_t requested)
 {
-  const ros2_zephyr_allocation_metrics_t snapshot =
-      ros2_zephyr_allocation_metrics(state->domain);
+  const ros2_zephyr_allocation_metrics_t snapshot = ros2_zephyr_allocation_metrics(state->domain);
   const char *domain = state->domain == ROS2_ZEPHYR_ALLOCATION_MIDDLEWARE ? "middleware" : "ros";
 
-  printf("ROS2_ZEPHYR_ALLOC_FAILURE domain=%s requested=%zu live=%zu high_water=%zu\n", domain,
+  printk("ROS2_ZEPHYR_ALLOC_FAILURE domain=%s requested=%zu live=%zu high_water=%zu\n", domain,
          requested, snapshot.live_bytes, snapshot.high_water_bytes);
-#if defined(CONFIG_SYS_HEAP_RUNTIME_STATS) && defined(CONFIG_SYS_HEAP_ARRAY_SIZE)
+#if defined(CONFIG_SYS_HEAP_RUNTIME_STATS) && CONFIG_SYS_HEAP_ARRAY_SIZE > 0
   struct sys_heap **heaps = NULL;
   const int heap_count = sys_heap_array_get(&heaps);
   for (int index = 0; index < heap_count; ++index) {
     struct sys_memory_stats stats;
     if (sys_heap_runtime_stats_get(heaps[index], &stats) == 0) {
-      printf("ROS2_ZEPHYR_ALLOC_FAILURE_HEAP index=%d allocated=%zu free=%zu peak=%zu\n", index,
+      printk("ROS2_ZEPHYR_ALLOC_FAILURE_HEAP index=%d allocated=%zu free=%zu peak=%zu\n", index,
              stats.allocated_bytes, stats.free_bytes, stats.max_allocated_bytes);
     }
   }
@@ -101,7 +100,7 @@ static void report_allocation_failure(allocation_state_t *state, size_t requeste
 
 static bool inject_allocation_failure(allocation_state_t *state)
 {
-#if defined(CONFIG_ROS2_ZEPHYR_TEST_ROS_ALLOCATION_FAILURE_AT) && \
+#if defined(CONFIG_ROS2_ZEPHYR_TEST_ROS_ALLOCATION_FAILURE_AT) &&                                  \
     CONFIG_ROS2_ZEPHYR_TEST_ROS_ALLOCATION_FAILURE_AT > 0
   if (state->domain == ROS2_ZEPHYR_ALLOCATION_ROS) {
     k_spinlock_key_t key = k_spin_lock(&allocation_metrics_lock);
@@ -185,8 +184,8 @@ void *ros2_zephyr_reallocate(void *pointer, size_t size, void *opaque_state)
   const size_t old_size = old_header->size;
   const uint32_t old_pool = old_header->pool;
 #if defined(CONFIG_ESP_SPIRAM)
-  const uint32_t new_pool = size >= state->external_threshold ? ALLOCATION_POOL_EXTERNAL
-                                                              : ALLOCATION_POOL_INTERNAL;
+  const uint32_t new_pool =
+      size >= state->external_threshold ? ALLOCATION_POOL_EXTERNAL : ALLOCATION_POOL_INTERNAL;
 #else
   const uint32_t new_pool = ALLOCATION_POOL_INTERNAL;
 #endif
@@ -194,8 +193,8 @@ void *ros2_zephyr_reallocate(void *pointer, size_t size, void *opaque_state)
 #if defined(CONFIG_ESP_SPIRAM)
   if (old_pool == new_pool && new_pool == ALLOCATION_POOL_EXTERNAL) {
     k_mutex_lock(&external_heap_mutex, K_FOREVER);
-    new_header = shared_multi_heap_realloc(SMH_REG_ATTR_EXTERNAL, old_header,
-                                           sizeof(*new_header) + size);
+    new_header =
+        shared_multi_heap_realloc(SMH_REG_ATTR_EXTERNAL, old_header, sizeof(*new_header) + size);
     k_mutex_unlock(&external_heap_mutex);
   } else if (old_pool != new_pool && new_pool == ALLOCATION_POOL_EXTERNAL) {
     k_mutex_lock(&external_heap_mutex, K_FOREVER);

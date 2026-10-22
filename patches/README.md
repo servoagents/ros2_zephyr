@@ -34,3 +34,15 @@ flags that would override the firmware profile.
 
 These patches modify upstream projects and remain subject to their respective
 upstream licenses.
+
+## ESP32-C6 A4 additions
+
+`cyclonedds-log-buffer.patch` adds a validated diagnostic-buffer capacity option
+(default 2048, A4 512). `cyclonedds-partial-magazines.patch` reuses free objects
+from another partial magazine on a local/shared miss. Both apply to the pinned
+native-sync fork after the existing Zephyr compatibility patch. Native sync
+remains at the already published dependency revision.
+
+`zephyr-riscv-tls-alignment.patch` aligns the per-thread TLS base on the pinned
+Zephyr 4.4.2 source and includes consumed alignment bytes in the stack delta.
+The C6 helper rejects other revisions. See `docs/esp32c6-a4.md` for scope.
