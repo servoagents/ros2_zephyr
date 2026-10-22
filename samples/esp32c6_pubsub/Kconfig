@@ -1,0 +1,2 @@
+mainmenu "ESP32-C6 ROS 2 pub/sub"
+source "Kconfig.zephyr"

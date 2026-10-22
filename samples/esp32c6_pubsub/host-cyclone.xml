@@ -1,0 +1,12 @@
+<CycloneDDS>
+  <Domain>
+    <General>
+      <Interfaces><NetworkInterface name="YOUR_WIFI_INTERFACE"/></Interfaces>
+      <AllowMulticast>false</AllowMulticast>
+    </General>
+    <Discovery>
+      <ParticipantIndex>1</ParticipantIndex>
+      <Peers><Peer Address="YOUR_MCU_IPV4"/></Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

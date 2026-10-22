@@ -46,7 +46,7 @@ they are not a creation, join or scheduling failure. Full UART logs are in
 ignored `build/phase4-c/tls-esp32s3-usb-run-{1,2,3}.log` and
 `build/phase4-c/tls-esp32s3-usb-run-final.log`; build logs,
 ELF, map and `.config` remain alongside them. No Wi-Fi credentials were
-used. The board currently has this diagnostic firmware flashed.
+used. These records describe the diagnostic image tested at that time.
 
 ## Cause and impact boundary
 

@@ -18,9 +18,14 @@ services. Zephyr-native synchronization is opt-in and retains POSIX threads.
 
 ## Planned work
 
-1. Qualify compiler TLS on supported hardware, then define DDSRT thread
-   ownership, join results and stack lifecycle.
+1. Qualify the packaged C6 image and editable application on hardware, retaining
+   image identities, failed trials, stack margins and peer-return results.
+   Keep the cross-build environment reproducible before expanding the profile.
 2. Upstream narrowly scoped Cyclone changes with native tests and measured
    impact. Keep each contribution independent of the embedded integration.
 3. Extend fixed deployment coverage only with explicit resource budgets,
    interoperability tests and hardware evidence.
+
+Native DDSRT threading remains exploratory. Any replacement for the current
+POSIX workers needs isolated compiler TLS, explicit ownership and join behavior,
+and a measured benefit. The S3 TLS investigation is separate from the C6 path.

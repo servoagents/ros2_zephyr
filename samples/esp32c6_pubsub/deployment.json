@@ -1,0 +1,67 @@
+{
+  "schema_version": 2,
+  "name": "c6_pubsub",
+  "domain_id": 73,
+  "node": {
+    "name": "c6_pubsub",
+    "namespace": ""
+  },
+  "rmw": [
+    "rmw_cyclonedds_c"
+  ],
+  "message_profile": "fixed_size",
+  "graph": {
+    "outbound": false,
+    "inbound": false,
+    "api": []
+  },
+  "resources": {
+    "local_endpoints": 2,
+    "remote": {
+      "participants": 1,
+      "nodes": 1,
+      "endpoints": 2
+    },
+    "workers": {
+      "maximum": 8
+    },
+    "application": {
+      "static_reserve_bytes": 16384
+    },
+    "targets": {
+      "esp32c6_devkitc/esp32c6/hpcore": {
+        "flash_bytes": 2000000,
+        "ram_bytes": 450000
+      }
+    }
+  },
+  "endpoints": [
+    {
+      "id": "outgoing",
+      "kind": "publisher",
+      "topic": "/c6/state",
+      "type": "std_msgs/msg/UInt32",
+      "qos": {
+        "reliability": "best_effort",
+        "durability": "volatile",
+        "history": "keep_last",
+        "depth": 1
+      },
+      "lifetime": "fixed_startup"
+    },
+    {
+      "id": "incoming",
+      "kind": "subscription",
+      "topic": "/c6/command",
+      "type": "std_msgs/msg/UInt32",
+      "callback": "subscription_callback",
+      "qos": {
+        "reliability": "best_effort",
+        "durability": "volatile",
+        "history": "keep_last",
+        "depth": 1
+      },
+      "lifetime": "fixed_startup"
+    }
+  ]
+}

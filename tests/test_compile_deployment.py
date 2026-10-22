@@ -67,6 +67,26 @@ class DeploymentCompilerTest(unittest.TestCase):
         self.assertNotIn("cyclonedds", source.lower())
         self.assertNotIn("zenoh", source.lower())
 
+    def test_standard_uint32_uses_existing_cyclone_adapter(self) -> None:
+        deployment = copy.deepcopy(self.deployment)
+        for endpoint in deployment["endpoints"]:
+            endpoint["type"] = "std_msgs/msg/UInt32"
+        for backend in ("rmw_cyclonedds_c", "rmw_zenoh_pico"):
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory)
+                (path / "deployment.json").write_text(json.dumps(deployment))
+                compiler.compile_deployment(
+                    path / "deployment.json", backend, self.capabilities, path / "generated"
+                )
+                source = (path / "generated/generated_ros_init.c").read_text()
+                if backend == "rmw_cyclonedds_c":
+                    self.assertIn("u_int32__rosidl_typesupport_introspection_c.h", source)
+                    self.assertIn("rosidl_typesupport_introspection_c, std_msgs, msg, UInt32)()", source)
+                    self.assertNotIn("ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs", source)
+                else:
+                    self.assertIn("ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, UInt32)", source)
+                    self.assertNotIn("rosidl_typesupport_introspection_c", source)
+
     def test_zenoh_rejects_transient_local(self) -> None:
         deployment = copy.deepcopy(self.deployment)
         deployment["endpoints"][0]["qos"]["durability"] = "transient_local"

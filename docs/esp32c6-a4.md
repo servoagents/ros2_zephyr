@@ -1,5 +1,9 @@
 # ESP32-C6 A4 profile
 
+For an editable application and the locked development environment, start with
+[the C6 application guide](getting-started-c6.md). The new sample is separate
+from the original Ping64 workload and needs its own qualification.
+
 A4 is an experimental fixed-size pub/sub profile for the ESP32-C6 HP core.
 It uses the C RMW, compiler TLS, five POSIX worker threads, native DDSRT
 synchronization and a 512-byte per-thread diagnostic buffer. Native
@@ -53,3 +57,13 @@ new endpoints or payloads require fresh admission. The benchmark owns radio
 metadata, host orchestration, raw observations and comparison policy. The
 original private source/image freezes remain separate from this formatted
 release and its new builds.
+
+## Reconstructed release versus original image
+
+The [release check](https://github.com/servoagents/ros2-embedded-benchmarks/blob/main/docs/release-check.md)
+records a clean-checkout cross-build and static admission. Its image hash is
+`f34d30b893c7e893084b8fb392120d16d1a6ab99bcf998115004bf0cf2bad34a`.
+That report explicitly says the image was not flashed or hardware-qualified.
+Do not attach original A4 runtime measurements to it. Follow the separate
+[lifecycle procedure](https://github.com/servoagents/ros2-embedded-benchmarks/blob/main/docs/lifecycle.md)
+to qualify an exact reconstructed image, retaining unsuccessful runs.

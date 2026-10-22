@@ -15,62 +15,74 @@ The accepted backend is `rmw_cyclonedds_c`, for which the device is a DDS/RTPS
 participant. A second, experimental backend builds `rmw_zenoh_pico` directly
 against Zenoh-Pico. Neither path uses a micro-ROS Agent.
 
-## Status
+## Start here
 
-The current release is an early, fixed-profile port:
+Use this project when an MCU should run ordinary ROS 2 C application code and
+participate directly in DDS, with explicit deployment and memory limits.
+The current application profile supports scalar, fixed-array and nested
+fixed-size messages. Services, actions, generic variable-size messages and
+DDS Security are outside the supported profile.
 
-- `native_sim/native/64`, `esp32_devkitc/esp32/procpu`, and
-  `esp32s3_devkitc/esp32s3/procpu` are supported build targets;
-- the loopback sample runs through ordinary `rclc` and `rcl` APIs;
-- scalar, fixed-array, and nested fixed-size messages are supported;
-- Cyclone DDS supports best-effort or reliable, volatile or transient-local,
-  finite keep-last QoS;
-- bounded outbound and inbound ROS graph state is available in the development
-  middleware profile;
-- exactly one RMW backend is selected by Kconfig and linked statically.
+**Recommended experimental hardware path: ESP32-C6.** Start with the
+[C6 application guide](docs/getting-started-c6.md): prepare the locked development
+environment, copy the small pub/sub application, build it, inspect its resource
+report, and connect it to a ROS 2 peer. The [A4 profile](docs/esp32c6-a4.md)
+describes the underlying configuration and its limits.
 
-The Zenoh-Pico backend now builds for `native_sim` and ESP32-S3 from exact
-GitHub pins. Best Effort/Volatile and Reliable/Volatile pass on the physical
-board in both directions; see
-[the Zenoh-Pico integration note](docs/zenoh-pico.md).
+### Evidence by target and image
 
-The loopback sample has passed on an ESP32-S3-DevKitC using ROS 2 Lyrical. The
-same test also passes on `native_sim` with Lyrical and Kilted. On Zephyr 4.4.2,
-the [Wi-Fi sample](samples/wifi/README.md) exchanged `std_msgs/msg/UInt32`
-messages in both directions with an unmodified Lyrical desktop node at 1, 10,
-and 100 Hz. The test used `rclc`, `rcl`, `rmw_cyclonedds_c`, and Cyclone DDS on
-the board, with no Agent.
+“Builds”, “communicates”, “isolates compiler TLS” and “survives peer returns” are
+separate claims. TLS here means **thread-local storage**, not Transport Layer
+Security. Qualification belongs to an exact firmware image and workload.
 
-Best Effort/Volatile, Reliable/Volatile, and Reliable/Transient Local depths 1
-and 3 have passed in both physical directions. The bounded graph implementation
-passes its Linux interoperability lanes and physical ESP32-S3 acceptance in
-both graph directions. The repository's pinned Zephyr baseline remains 4.4.0
-until a stable 4.4.x release contains the timed condition-wait fix. Services,
-actions, generic variable-size application messages, DDS Security, and
-extended graph APIs remain outside the current profile.
+| Target / profile | Build support | Hardware communication | Compiler TLS | Lifecycle qualification |
+| --- | --- | --- | --- | --- |
+| ESP32-C6, original frozen A4 Ping64 | Recorded build | 1,000/1,000 pilot echoes | Qualified configuration with RISC-V alignment repair | 20 peer returns, three boots, abrupt loss and error paths; finite exercised coverage |
+| ESP32-C6, packaged A4 reconstruction | Clean-checkout cross-build and static admission passed | Not yet qualified for the rebuilt image | TLS-aware static admission; original runtime evidence is not transferred | Pending for this exact rebuilt image |
+| ESP32-C6, editable pub/sub sample | Fresh-workspace build and static admission passed | Two ten-value functional peer runs passed | TLS-aware admission; no new standalone runtime TLS probe | No stack/cache or full lifecycle qualification |
+| ESP32-S3, historical Cyclone profiles | Builds; loopback and Wi-Fi profiles exist | Recorded pub/sub, QoS and graph successes | **Isolation probe failed on the documented Xtensa configuration** | Earlier communication tests do not establish safe TLS or A4 lifecycle coverage |
+| ESP32 original (`esp32/procpu`) | Cross-build target | No equivalent C6 campaign claimed | Not established here | Not established here |
+| `native_sim/native/64` | Native loopback with Lyrical/Kilted | Simulation, not hardware evidence | Standalone isolation probe passed | Does not establish MCU lifecycle behavior |
 
-The exact accepted hardware configuration, including its XTypes boundary, is
-recorded in [the Wi-Fi baseline](docs/wifi-baseline.md).
-The graph hardware procedure and its explicit acceptance boundary are recorded
-in [the graph acceptance note](docs/graph-acceptance.md).
-The RMW selection boundary and backend capability table are recorded in
-[the backend profile](docs/rmw-backends.md).
-The fixed endpoint description, generated build artifacts, and rejection
-rules are documented in
-[the deployment compiler guide](docs/deployment-compiler.md).
-The experimental Cyclone DDS fork is pinned to an exact commit; native
-DDSRT synchronization is opt-in with
-`ROS2_ZEPHYR_CYCLONEDDS_NATIVE_SYNC=ON`. The default remains POSIX, and
-Cyclone DDS threads remain POSIX even with this option. See
-[the native synchronization results](docs/native-ddsrt-sync.md) for the
-ESP32-S3 comparison, limits, and remaining work.
-The fixed wait-set behavior and allocation measurements are documented in
-[the fixed wait-set note](docs/fixed-waitset.md).
+Read the [C6 evidence and limits](docs/esp32c6-a4.md#evidence-and-limits),
+[packaged release check](https://github.com/servoagents/ros2-embedded-benchmarks/blob/main/docs/release-check.md),
+and [S3 TLS investigation](docs/compiler-tls.md) before selecting a target.
+The S3 evidence remains useful historical data; it is not the recommended
+compiler-TLS configuration.
 
-For current support limits and planned work, see [project status](ROADMAP.md).
-Changes are listed in [the changelog](CHANGELOG.md).
+The C6 reference application uses best-effort, volatile, keep-last depth 1,
+with a fixed peer and bounded endpoints. Other middleware development profiles
+have exercised Reliable/Volatile, Reliable/Transient Local and bounded graph
+support. Those results do not extend the C6 sample's declared profile. See
+[Wi-Fi baseline](docs/wifi-baseline.md), [graph acceptance](docs/graph-acceptance.md)
+and [backend capabilities](docs/rmw-backends.md).
 
-## Prerequisites
+The experimental Zenoh-Pico backend has separate ESP32-S3 Volatile pub/sub
+results in [its integration note](docs/zenoh-pico.md). It is not the C6 A4 path.
+Exactly one RMW backend is selected and linked statically.
+
+### What CI checks
+
+The native job checks scripts and unit tests, prepares pinned dependencies, and
+builds/runs native loopback. The C6 job prepares the locked development environment,
+cross-builds the editable sample with dummy credentials and runs static resource
+admission. Neither job flashes a board or establishes runtime stack margins,
+Wi-Fi interoperability or lifecycle qualification. Workflow results apply to
+the revision actually run; adding a job is not evidence that hosted CI passed.
+
+The separate benchmark repository's host checks validate accounting, archived
+evidence and the reconstructed Cyclone regressions. Its historical hardware
+records are not hardware CI.
+
+See [project status](ROADMAP.md), [resource contracts](docs/resource-contracts.md),
+[deployment generation](docs/deployment-compiler.md), and [changes](CHANGELOG.md).
+
+## Earlier targets and native simulation
+
+The commands below use the older general setup path. For ESP32-C6, follow the
+[C6 application guide](docs/getting-started-c6.md) and its separate locks.
+
+### Prerequisites
 
 - Linux
 - Git, CMake, Ninja, and Python 3.12 or newer
@@ -80,7 +92,7 @@ Changes are listed in [the changelog](CHANGELOG.md).
 The setup script creates an isolated Python environment and keeps downloaded
 sources and build output below the ignored `build/` directory.
 
-## Quick start
+### Native quick start
 
 ```sh
 scripts/setup.sh

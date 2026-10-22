@@ -1,4 +1,4 @@
-name: CI
+name: Native checks and C6 static build
 
 on:
   pull_request:
@@ -15,10 +15,42 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Check scripts
-        run: scripts/check.sh
+        run: |
+          python3 -m venv build/check-venv
+          source build/check-venv/bin/activate
+          python -m pip install pyelftools==0.32
+          scripts/check.sh
       - name: Prepare pinned sources
         env:
           ROS2_ZEPHYR_SDK_HOSTTOOLS_ONLY: "1"
         run: scripts/setup.sh
       - name: Build and run native loopback
         run: scripts/run.sh native
+
+  c6-build:
+    name: C6 sample cross-build and static admission (no hardware)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14.4'
+      - name: Install host build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build rsync device-tree-compiler xz-utils file wget
+      - name: Prepare the locked C6 development environment
+        run: bash scripts/setup_c6.sh
+      - name: Cross-build with dummy credentials and enforce resource admission
+        run: |
+          source build/c6/env.sh
+          cp samples/esp32c6_pubsub/network.example.json build/c6/network.json
+          chmod 600 build/c6/network.json
+          export APP_PEER_IP=192.0.2.1
+          bash scripts/build_c6_app.sh
+      - name: Keep static admission report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c6-static-admission
+          path: build/c6/application/admission.json
+          if-no-files-found: warn

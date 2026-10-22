@@ -2,6 +2,11 @@
 
 ## 2026-10-22
 
+- Added a C6 application guide, editable UInt32 pub/sub sample, locked setup
+  script and CI cross-build with static admission.
+- Separated build, communication, compiler-TLS and lifecycle evidence by image.
+- Let generated Cyclone deployments use the existing standard UInt32 adapter.
+
 - Published the ESP32-C6 A4 fixed-size pub/sub profile with source pins,
   resource admission and a reproducible build path.
 - Integrated the partial-magazine freelist repair in the pinned Cyclone fork.
