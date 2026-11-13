@@ -32,6 +32,8 @@ os.fchmod(fd, 0o600)
 with os.fdopen(fd, 'w') as out:
     out.write(content)
 PYTHON
+# The locked workspace uses flat module paths, unlike Zephyr's west manifest.
+export ZEPHYR_EXTRA_MODULES="$workspace/deps/hal_espressif"
 export ZEPHYR_BASE="$workspace/deps/zephyr" ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 export ROS2_ZEPHYR_ROS_DISTRO=kilted
 cmake -S "$cyclone" -B "$workspace/build/idlc" -G Ninja \

@@ -24,7 +24,7 @@ The script prepares an isolated venv with locked packages and Zephyr SDK 1.0.1
 `ZEPHYR_SDK_INSTALL_DIR`. The compiler-only archive is insufficient.
 The development environment reuses the exact reconstruction manifest at
 `servoagents/ros2-embedded-benchmarks` commit
-`8f04542` in an ignored workspace. That checkout supplies dependency locks,
+`4c0beeb` in an ignored workspace. That checkout supplies dependency locks,
 patch verification and downloads; you do not edit its firmware, run its benchmark
 or install benchmark message types on your ROS desktop to use this application.
 The locked static-library build still includes its internal test-message package;

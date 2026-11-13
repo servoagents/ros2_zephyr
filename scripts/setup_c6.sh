@@ -3,10 +3,10 @@
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 workspace="$(realpath -m "${ROS2_ZEPHYR_C6_WORKSPACE:-$root/build/c6/workspace}")"
-pin=8f04542
+pin=4c0beeb
 # Full immutable revision is checked below; this repository supplies source locks,
 # not application code or a benchmark runtime dependency.
-revision=8f04542f344fdd63f5eb1728805a42f30432d03b
+revision=4c0beebf6219915cfbd76944c021fb72bae456fd
 if [[ ! -d "$workspace/.git" ]]; then
   git clone --no-checkout https://github.com/servoagents/ros2-embedded-benchmarks.git "$workspace"
   git -C "$workspace" checkout --detach "$revision"
@@ -24,6 +24,11 @@ python "$workspace/scripts/prepare.py" "$@"
 if [[ ! -d "$workspace/deps/.west" ]]; then
   (cd "$workspace"; west init -l deps/zephyr)
 fi
+# Zephyr verifies all HAL blobs at configure time. Its manifest uses different
+# paths from our source lock, so expose the prepared HAL explicitly to west.
+export ZEPHYR_BASE="$workspace/deps/zephyr"
+export ZEPHYR_EXTRA_MODULES="$workspace/deps/hal_espressif"
+west blobs fetch hal_espressif
 sdk="$(realpath -m "${ZEPHYR_SDK_INSTALL_DIR:-$workspace/.local/sdk}")"
 if [[ ! -f "$sdk/sdk_version" ]]; then
   (cd "$workspace/deps"; west sdk install --version 1.0.1 --install-dir "$sdk" --gnu-toolchains riscv64-zephyr-elf)
