@@ -12,6 +12,12 @@ if(NOT DEFINED ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS)
   set(ROS2_ZEPHYR_RCLC_ENABLE_ACTIONS ON)
 endif()
 
+# rcutils keeps a 2 KiB error state in thread-local storage, and Zephyr copies
+# every TLS variable into every thread. A deployment with only one caller of
+# ROS and rcutils can share this state instead. Keep TLS for other deployments.
+option(ROS2_ZEPHYR_RCUTILS_SHARED_ERROR_STATE
+       "Build rcutils with RCUTILS_NO_THREAD_SUPPORT; only one thread may use ROS/rcutils errors" OFF)
+
 zephyr_get_system_include_directories_for_lang_as_string(C zephyr_system_includes)
 zephyr_get_include_directories_for_lang_as_string(C zephyr_includes)
 zephyr_get_compile_definitions_for_lang_as_string(C zephyr_definitions)

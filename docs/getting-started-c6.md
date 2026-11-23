@@ -24,7 +24,7 @@ The script prepares an isolated venv with locked packages and Zephyr SDK 1.0.1
 `ZEPHYR_SDK_INSTALL_DIR`. The compiler-only archive is insufficient.
 The development environment reuses the exact reconstruction manifest at
 `servoagents/ros2-embedded-benchmarks` commit
-`8f04542` in an ignored workspace. That checkout supplies dependency locks,
+`4c0beeb` in an ignored workspace. That checkout supplies dependency locks,
 patch verification and downloads; you do not edit its firmware, run its benchmark
 or install benchmark message types on your ROS desktop to use this application.
 The locked static-library build still includes its internal test-message package;
@@ -66,7 +66,9 @@ export APP_PEER_IP=192.168.1.10  # Replace with your ROS desktop's Wi-Fi IPv4.
 bash scripts/build_c6_app.sh "$PWD/build/c6/my_application"
 ```
 
-The default output is `build/c6/application`. An optional second argument selects
+The default output is `build/c6/application`. Set `APP_PROFILE=esp32c6-a5` to
+build the experimental [A5 profile](esp32c6-a5.md) instead of A4, and
+`APP_EXTRA_CONF` to add a Kconfig fragment such as `samples/esp32c6_pubsub/report.conf`. An optional second argument selects
 a different build directory; use a fresh directory for a different application.
 `APP_NETWORK_FILE` can select another private JSON file.
 The script runs deployment checks, cross-compilation and TLS-aware static

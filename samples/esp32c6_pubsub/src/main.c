@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "generated_ros_init.h"
+#include "report.h"
 #include "wifi.h"
 #include <rcl/error_handling.h>
 #include <rcl/rcl.h>
@@ -30,6 +31,7 @@ int main(void)
     printk("C6_APP_WIFI_FAIL code=%d\n", status);
     return status;
   }
+  app_resource_report("wifi");
   rcl_allocator_t allocator = {
       .allocate = ros2_zephyr_allocate,
       .deallocate = ros2_zephyr_deallocate,
@@ -48,8 +50,18 @@ int main(void)
     return 1;
   }
   printk("C6_APP_READY domain=73 command=/c6/command state=/c6/state\n");
+  app_resource_report("ready");
+#ifdef CONFIG_APP_RESOURCE_REPORT
+  int64_t next_report = k_uptime_get() + CONFIG_APP_RESOURCE_REPORT_PERIOD_S * 1000LL;
+#endif
   for (;;) {
     rcl_ret_t rc = rclc_executor_spin_some(&deployment.executor, RCL_MS_TO_NS(100));
+#ifdef CONFIG_APP_RESOURCE_REPORT
+    if (k_uptime_get() >= next_report) {
+      app_resource_report("periodic");
+      next_report += CONFIG_APP_RESOURCE_REPORT_PERIOD_S * 1000LL;
+    }
+#endif
     if ((rc != RCL_RET_OK && rc != RCL_RET_TIMEOUT) || publish_failed) {
       printk("C6_APP_FAIL code=%d publish_failed=%d\n", (int)rc, publish_failed);
       break;

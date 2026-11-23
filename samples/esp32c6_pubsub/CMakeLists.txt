@@ -6,7 +6,8 @@ include("${ROS2_ZEPHYR_DIR}/cmake/deployment.cmake")
 ros2_zephyr_compile_deployment("${CMAKE_CURRENT_LIST_DIR}/deployment.json")
 list(APPEND ZEPHYR_EXTRA_MODULES "${ROS2_ZEPHYR_DIR}")
 list(APPEND EXTRA_CONF_FILE "${CMAKE_CURRENT_LIST_DIR}/network.conf")
-include("${ROS2_ZEPHYR_DIR}/profiles/esp32c6-a4.cmake")
+set(ROS2_ZEPHYR_C6_PROFILE esp32c6-a4 CACHE STRING "Library profile: esp32c6-a4 or esp32c6-a5")
+include("${ROS2_ZEPHYR_DIR}/profiles/${ROS2_ZEPHYR_C6_PROFILE}.cmake")
 set(ROS2_ZEPHYR_CYCLONEDDS_URI
   "<CycloneDDS><Domain><General><AllowMulticast>false</AllowMulticast><MaxMessageSize>1400B</MaxMessageSize></General><Sizing><ReceiveBufferSize>8KiB</ReceiveBufferSize><ReceiveBufferChunkSize>4KiB</ReceiveBufferChunkSize></Sizing><Discovery><ParticipantIndex>0</ParticipantIndex><MaxAutoParticipantIndex>1</MaxAutoParticipantIndex><Peers><Peer Address='${APP_PEER_IP}'/></Peers></Discovery><Internal><MultipleReceiveThreads>false</MultipleReceiveThreads></Internal></Domain></CycloneDDS>"
   CACHE STRING "Fixed direct-DDS peer" FORCE)
@@ -15,6 +16,7 @@ set(ROS2_ZEPHYR_EXTRA_PACKAGES "" CACHE STRING "Additional fixed-size message pa
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(c6_pubsub C CXX)
 target_sources(app PRIVATE src/main.c src/wifi.c)
+target_sources_ifdef(CONFIG_APP_RESOURCE_REPORT app PRIVATE src/report.c)
 target_include_directories(app PRIVATE src "${APP_CREDENTIALS_DIR}")
 ros2_zephyr_add_generated_deployment(app)
 target_compile_options(app PRIVATE -Wall -Wextra -Werror)

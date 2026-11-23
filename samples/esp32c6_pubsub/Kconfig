@@ -1,2 +1,19 @@
 mainmenu "ESP32-C6 ROS 2 pub/sub"
+
+config APP_RESOURCE_REPORT
+	bool "Print thread stack and heap use"
+	select THREAD_MONITOR
+	select SYS_HEAP_RUNTIME_STATS
+	help
+	  Print C6_STACK, C6_HEAP and C6_ALLOC lines after Wi-Fi joins, after the
+	  deployment is ready, and then periodically. Use it to measure runtime
+	  stack margins and heap high-water marks on hardware. It adds code and
+	  changes the image. Leave it disabled for normal application builds.
+
+config APP_RESOURCE_REPORT_PERIOD_S
+	int "Seconds between periodic resource reports"
+	default 30
+	range 1 3600
+	depends on APP_RESOURCE_REPORT
+
 source "Kconfig.zephyr"
