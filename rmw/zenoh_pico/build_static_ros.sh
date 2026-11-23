@@ -46,6 +46,10 @@ for ignored_package in \
 done
 
 read -r -a extra_packages <<< "${ROS2_ZEPHYR_EXTRA_PACKAGES:-}"
+rcutils_args=(-DRCUTILS_NO_THREAD_SUPPORT=OFF)
+case "${ROS2_ZEPHYR_RCUTILS_SHARED_ERROR_STATE:-OFF}" in
+  ON | on | TRUE | true | 1) rcutils_args=(-DRCUTILS_NO_THREAD_SUPPORT=ON) ;;
+esac
 colcon --log-base "${ROS2_ZEPHYR_WORK_ROOT}/log" build \
   --base-paths "${TARGET_SRC}" \
   --build-base "${TARGET_BUILD}" \
@@ -72,6 +76,7 @@ colcon --log-base "${ROS2_ZEPHYR_WORK_ROOT}/log" build \
   -DRMW_IMPLEMENTATION=rmw_zenoh_pico \
   -DRMW_IMPLEMENTATION_DISABLE_RUNTIME_SELECTION=ON \
   -DRCL_LOGGING_IMPLEMENTATION=rcl_logging_noop \
+  "${rcutils_args[@]}" \
   -DWITH_ZEPHYR=ON \
   -DRMW_ZENOH_PICO_TRANSPORT_TYPE=unicast \
   -DRMW_ZENOH_PICO_CONNECT="${ROS2_ZEPHYR_ZENOH_ROUTER_IPV4}" \

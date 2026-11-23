@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cross-build an editable application against the locked A4 library profile.
+# Cross-build an editable application against the selected C6 library profile.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${ROS2_ZEPHYR_C6_WORKSPACE:?Source build/c6/env.sh first}"
@@ -47,7 +47,9 @@ cmake -S "$app" -B "$output" -G Ninja \
   -DAPP_CREDENTIALS_DIR="$output/private" -DAPP_PEER_IP="$APP_PEER_IP" \
   -DROS2_ZEPHYR_DIR="$lib" -DROS2_ZEPHYR_DEPS_ROOT="$workspace/deps/ros" \
   -DROS2_ZEPHYR_HOST_IDLC="$workspace/build/idlc-install/bin/idlc" \
-  -DROS2_ZEPHYR_CYCLONEDDS_SOURCE="$cyclone"
+  -DROS2_ZEPHYR_CYCLONEDDS_SOURCE="$cyclone" \
+  -DROS2_ZEPHYR_C6_PROFILE="${APP_PROFILE:-esp32c6-a4}" \
+  -DEXTRA_CONF_FILE="${APP_EXTRA_CONF:-}"
 cmake --build "$output" --parallel "${ROS2_ZEPHYR_BUILD_JOBS:-2}"
 python "$lib/tools/admit_esp32c6.py" "$output" "$output/admission.json" --objdump "${gcc%-gcc}-objdump"
 printf 'Static admission recorded in %s/admission.json; hardware qualification is separate.\n' "$output"

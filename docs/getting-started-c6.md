@@ -66,7 +66,9 @@ export APP_PEER_IP=192.168.1.10  # Replace with your ROS desktop's Wi-Fi IPv4.
 bash scripts/build_c6_app.sh "$PWD/build/c6/my_application"
 ```
 
-The default output is `build/c6/application`. An optional second argument selects
+The default output is `build/c6/application`. Set `APP_PROFILE=esp32c6-a5` to
+build the experimental [A5 profile](esp32c6-a5.md) instead of A4, and
+`APP_EXTRA_CONF` to add a Kconfig fragment such as `samples/esp32c6_pubsub/report.conf`. An optional second argument selects
 a different build directory; use a fresh directory for a different application.
 `APP_NETWORK_FILE` can select another private JSON file.
 The script runs deployment checks, cross-compilation and TLS-aware static
